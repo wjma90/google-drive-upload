@@ -37,14 +37,14 @@ fi
 function jsonValue() {
 KEY=$1
 num=$2
-awk -F"[,:}]" '{for(i=1;i<=NF;i++){if($i~/\042'$KEY'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+awk -F"[:,}][^:\/\/]" '{for(i=1;i<=NF;i++){if($i~/\042'$KEY'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[,]*$//'
 }
 
 if [ "$1" == "create" ]; then
 	RESPONSE=`curl --silent "https://accounts.google.com/o/oauth2/device/code" --data "client_id=$CLIENT_ID&scope=$SCOPE"`
-	DEVICE_CODE=`echo "$RESPONSE" | python -mjson.tool | grep -oP 'device_code"\s*:\s*"\K(.*)"' | sed 's/"//'`
-	USER_CODE=`echo "$RESPONSE" | python -mjson.tool | grep -oP 'user_code"\s*:\s*"\K(.*)"' | sed 's/"//'`
-	URL=`echo "$RESPONSE" | python -mjson.tool | grep -oP 'verification_url"\s*:\s*"\K(.*)"' | sed 's/"//'`
+	DEVICE_CODE=`echo "$RESPONSE" | jsonValue device_code`
+	USER_CODE=`echo "$RESPONSE" | jsonValue user_code`
+	URL=`echo "$RESPONSE" | jsonValue verification_url`
 
 	echo -n "Go to $URL and enter $USER_CODE to grant access to this application. Hit enter when done..."
 	read
