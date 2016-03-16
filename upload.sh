@@ -45,7 +45,7 @@ umask 0077
 if [ -z "$ROOT_FOLDER" ]
 then
     read -p "Root Folder ID (Default: root): " ROOT_FOLDER
-    if [ -z "$ROOT_FOLDER" -o "$ROOT_FOLDER" -eq "root"]
+    if [ -z "$ROOT_FOLDER"] || [ `echo $ROOT_FOLDER | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]
     	then
     		ROOT_FOLDER="root"
     		echo "ROOT_FOLDER=$ROOT_FOLDER" >> $HOME/.googledrive.conf
@@ -97,9 +97,12 @@ if [ -z "$ACCESS_TOKEN" ]
 	ACCESS_TOKEN=`echo $RESPONSE | jsonValue access_token`
 fi
 # Check to find whether the folder exists in google drive. If not then the folder is created in google drive under the configured root folder
-if [ -z "$2" -o "$2" -eq "root"]
+if [ -z "$2" ] || [ `echo $2 | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]
 	then
-	ROOT_FOLDER="root"
+	if [ `echo $2 | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]
+	then
+		ROOT_FOLDER="root"
+	fi
     FOLDER_ID=$ROOT_FOLDER
 else
         FOLDERNAME="$2"
