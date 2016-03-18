@@ -10,7 +10,7 @@ This script does not have very many dependencies. Most of the dependencies are a
  - sed (Stream editor)
  - find command
  - awk
- - getoupt
+ - getopt
 
 **Usage**
 -----
