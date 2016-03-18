@@ -75,7 +75,7 @@ then
 	FOLDERNAME=$2
 fi
 
-if [ $# = 0 ] || [ -z "$FOLDERNAME" ]
+if [ "$#" = "0" ] && [ -z "$FOLDERNAME" ]
 	then
 		usage
 fi
@@ -84,7 +84,7 @@ fi
 function jsonValue() {
 KEY=$1
 num=$2
-awk -F"[,:}][^:\/\/]" '{for(i=1;i<=NF;i++){if($i~/\042'$KEY'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p | sed -e 's/[}]*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[,]*$//' 
+awk -F"[,:}][^://]" '{for(i=1;i<=NF;i++){if($i~/\042'$KEY'\042/){print $(i+1)}}}' | tr -d '"' | sed -n ${num}p | sed -e 's/[}]*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/[,]*$//' 
 }
 
 function log() {
@@ -179,7 +179,7 @@ umask 0077
 if [ -z "$ROOT_FOLDER" ]
 then
     read -p "Root Folder ID (Default: root): " ROOT_FOLDER
-    if [ -z "$ROOT_FOLDER"] || [ `echo $ROOT_FOLDER | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]
+    if [ -z "$ROOT_FOLDER" ] || [ `echo $ROOT_FOLDER | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]
     	then
     		ROOT_FOLDER="root"
     		echo "ROOT_FOLDER=$ROOT_FOLDER" >> $HOME/.googledrive.conf
