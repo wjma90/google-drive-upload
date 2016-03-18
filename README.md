@@ -34,7 +34,7 @@ Other Options available are
     -C | --create-dir <foldername> - option to create directory. Will provide folder id.
 	-r | --root-dir <google_folderid> - google folder id to which the file/directory to upload.
 	-v | --verbose - Display detailed message.
-	-h | --help - Display usage instructions." 
+	-h | --help - Display usage instructions.
 
 To create a folder:
 
