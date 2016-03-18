@@ -35,6 +35,7 @@ Other Options available are
 	-r | --root-dir <google_folderid> - google folder id to which the file/directory to upload.
 	-v | --verbose - Display detailed message.
 	-h | --help - Display usage instructions.
+	-z | --config - Override default config file with custom config file.
 
 To create a folder:
 
