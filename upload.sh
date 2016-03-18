@@ -5,8 +5,6 @@
 
 #!/bin/bashset -e
 
-#Configuration variables
-
 function usage(){
 
 	echo -e "\nThe script can be used to upload file/directory to google drive." 
@@ -20,6 +18,8 @@ function usage(){
 	echo -e "-h | --help - Display usage instructions.\n" 
 	exit 0;
 }
+
+#Configuration variables
 ROOT_FOLDER=""
 CLIENT_ID=""
 CLIENT_SECRET=""
@@ -95,6 +95,7 @@ function log() {
 	fi
 }
 
+# Method to create directory in google drive. Requires 3 arguments foldername,root directory id and access token.
 function createDirectory(){
 	DIRNAME="$1"
 	ROOTDIR="$2"
@@ -128,6 +129,7 @@ function createDirectory(){
 	echo "$FOLDER_ID"
 }
 
+# Method to upload files to google drive. Requires 3 arguments file path, google folder id and access token.
 function uploadFile(){
 
 	FILE="$1"
@@ -228,8 +230,8 @@ if [ -z "$ACCESS_TOKEN" ]
 	RESPONSE=`curl --silent "https://accounts.google.com/o/oauth2/token" --data "client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&refresh_token=$REFRESH_TOKEN&grant_type=refresh_token"`
 	ACCESS_TOKEN=`echo $RESPONSE | jsonValue access_token`
 fi
-# Check to find whether the folder exists in google drive. If not then the folder is created in google drive under the configured root folder
 
+# Check to find whether the folder exists in google drive. If not then the folder is created in google drive under the configured root folder
 if [ -z "$FOLDERNAME" ] || [[ `echo "$FOLDERNAME" | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]]
 	then
 	if [[ `echo "$FOLDERNAME" | tr [:upper:] [:lower:]` = `echo "root" | tr [:upper:] [:lower:]` ]]
@@ -243,6 +245,8 @@ else
 fi
 	log "Folder ID for folder name $FOLDERNAME : $FOLDER_ID"
 
+# Check whether the given file argument is valid and check whether the argument is file or directory.
+# based on the type, if the argument is directory do a recursive upload.
 if [ ! -z "$FILE" ]; then
 	if [ -f "$FILE" ];then
 		uploadFile "$FILE" "$FOLDER_ID" "$ACCESS_TOKEN"
