@@ -15,6 +15,7 @@ function usage(){
 	echo -e "-C | --create-dir <foldername> - option to create directory. Will provide folder id."
 	echo -e "-r | --root-dir <google_folderid> - google folder id to which the file/directory to upload."
 	echo -e "-v | --verbose - Display detailed message."
+	echo -e "-z | --config - Override default config file with custom config file."
 	echo -e "-h | --help - Display usage instructions.\n" 
 	exit 0;
 }
@@ -62,7 +63,7 @@ while true; do
     -h | --help )    usage; shift ;;
     -C | --create-dir ) FOLDERNAME="$2"; shift 2 ;;
     -r | --root-dir ) ROOTDIR="$2";ROOT_FOLDER="$2"; shift 2 ;;
-	-z | --config ) CONFIG="$2"; shift 2 ;;
+    -z | --config ) CONFIG="$2"; shift 2 ;;
     -- ) shift; break ;;
     * )  break ;;
   esac
