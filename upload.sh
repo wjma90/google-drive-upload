@@ -40,8 +40,8 @@ then
 fi
 
 PROGNAME=${0##*/}
-SHORTOPTS="vhr:C:" 
-LONGOPTS="verbose,help,create-dir:,root-dir:" 
+SHORTOPTS="vhr:C:z:" 
+LONGOPTS="verbose,help,create-dir:,root-dir:,config:" 
 
 set -o errexit -o noclobber -o pipefail #-o nounset 
 OPTS=$(getopt -s bash --options $SHORTOPTS --longoptions $LONGOPTS --name $PROGNAME -- "$@" ) 
@@ -53,17 +53,33 @@ eval set -- "$OPTS"
 
 VERBOSE=false
 HELP=false
+CONFIG=""
+ROOTDIR=""
 
 while true; do
   case "$1" in
     -v | --verbose ) VERBOSE=true;curl_args="--progress"; shift ;;
     -h | --help )    usage; shift ;;
     -C | --create-dir ) FOLDERNAME="$2"; shift 2 ;;
-    -r | --root-dir ) ROOT_FOLDER="$2"; shift 2 ;;
+    -r | --root-dir ) ROOTDIR="$2";ROOT_FOLDER="$2"; shift 2 ;;
+	-z | --config ) CONFIG="$2"; shift 2 ;;
     -- ) shift; break ;;
     * )  break ;;
   esac
 done
+
+if[ ! -z "$CONFIG" ]
+	then
+	if [ -e "$CONFIG" ]
+	then
+    	. $CONFIG
+	fi
+	if [ ! -z "$ROOTDIR" ]
+		then
+		ROOT_FOLDER="$ROOTDIR"
+	fi
+
+fi
 
 if [ ! -z "$1" ]
 then
