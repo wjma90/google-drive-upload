@@ -68,7 +68,7 @@ while true; do
   esac
 done
 
-if[ ! -z "$CONFIG" ]
+if [ ! -z "$CONFIG" ]
 	then
 	if [ -e "$CONFIG" ]
 	then
