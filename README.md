@@ -2,6 +2,8 @@
 -------------------
 Google drive upload is a Bash scripts based on v2 google APIs to upload files/directories into google drive. This is a minimalistic shell script which utilizes google OAuth2.0 device flow to generate access tokens to authorize application to upload files to your google drive.
 
+Further usage documentation can be found at my blog page [Labbots.com](https://labbots.com/google-drive-upload-bash-script/ "Labbots.com").
+
 **Dependencies**
 ----------------
 This script does not have very many dependencies. Most of the dependencies are available by default in most linux platforms. This script requires the following packages
