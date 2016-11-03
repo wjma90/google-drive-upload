@@ -152,8 +152,18 @@ function uploadFile(){
 	FILE="$1"
 	FOLDER_ID="$2"
 	ACCESS_TOKEN="$3"
-	MIME_TYPE=`file --brief --mime-type "$FILE"`
 	SLUG=`basename "$FILE"`
+	FILENAME="${SLUG%.*}"
+	EXTENSION="${SLUG##*.}"
+	if [ "$FILENAME" == "$EXTENSION" ]
+   	then
+     		MIME_TYPE=`file --brief --mime-type "$FILE"`
+   	else
+        	MIME_TYPE=`mimetype --output-format %m  "$FILE"`
+
+	fi
+
+
 	FILESIZE=$(stat -c%s "$FILE")
 
 	# JSON post data to specify the file name and folder under while the file to be created
