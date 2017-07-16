@@ -155,7 +155,7 @@ function uploadFile(){
 	SLUG=`basename "$FILE"`
 	FILENAME="${SLUG%.*}"
 	EXTENSION="${SLUG##*.}"
-	if [ "$FILENAME" == "$EXTENSION" ]
+	if [ "$FILENAME" == "$EXTENSION" -o ! "$(command -v mimetype)" ]
    	then
      		MIME_TYPE=`file --brief --mime-type "$FILE"`
    	else
