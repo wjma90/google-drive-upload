@@ -194,7 +194,7 @@ function uploadFile(){
 	-H "Content-Type: $MIME_TYPE" \
 	-H "Content-Length: $FILESIZE" \
 	-H "Slug: $SLUG" \
-	--data-binary "@$FILE" \
+	--upload-file "$FILE" \
 	--output /dev/null \
 	"$uploadlink" \
 	$curl_args
