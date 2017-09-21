@@ -182,7 +182,7 @@ function uploadFile(){
 				-H "X-Upload-Content-Length: $FILESIZE" \
 				-d "$postData" \
 				"https://www.googleapis.com/upload/drive/v2/files?uploadType=resumable" \
-				--dump-header - | sed -ne s/"Location: "//p | tr -d '\r\n'`
+				--dump-header - | sed -ne s/"Location: "//pi | tr -d '\r\n'`
 
 	# Curl command to push the file to google drive.
 	# If the file size is large then the content can be split to chunks and uploaded.
@@ -211,7 +211,7 @@ then
     		ROOT_FOLDER="root"
     		echo "ROOT_FOLDER=$ROOT_FOLDER" >> $HOME/.googledrive.conf
     	else
-		    if expr "$ROOT_FOLDER" : '^[A-Za-z0-9_]\{28\}$' > /dev/null
+		    if expr "$ROOT_FOLDER" : '^[A-Za-z0-9_-]\{28\}$' > /dev/null
 		    then
 				echo "ROOT_FOLDER=$ROOT_FOLDER" >> $HOME/.googledrive.conf
 			else
