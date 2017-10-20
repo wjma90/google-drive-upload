@@ -33,7 +33,7 @@ FILE=""
 FOLDERNAME=""
 curl_args=""
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DIR="$( cd "$( dirname "$( readlink "${BASH_SOURCE[0]}" )" )" && pwd )"
 
 if [ -e $HOME/.googledrive.conf ]
 then
