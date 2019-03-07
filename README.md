@@ -38,6 +38,7 @@ Other Options available are
 	-v | --verbose - Display detailed message.
 	-h | --help - Display usage instructions.
 	-z | --config - Override default config file with custom config file.
+	-g | --globoff - Turn off URL globbing parser to allow filenames with literal [] and/or {}.
 
 To create a folder:
 
