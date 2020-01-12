@@ -181,7 +181,7 @@ function uploadFile(){
 				-H "X-Upload-Content-Type: $MIME_TYPE" \
 				-H "X-Upload-Content-Length: $FILESIZE" \
 				-d "$postData" \
-				"https://www.googleapis.com/upload/drive/v2/files?uploadType=resumable" \
+				"https://www.googleapis.com/upload/drive/v2/files?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true" \
 				--dump-header - | sed -ne s/"Location: "//pi | tr -d '\r\n'`
 
 	# Curl command to push the file to google drive.
