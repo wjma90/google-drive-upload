@@ -12,6 +12,7 @@ function usage() {
     echo -e "-r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload."
     echo -e "-v | --verbose - Display detailed message."
     echo -e "-V | --verbose-progress - Display detailed message and detailed upload progress."
+    echo -e "-i | --save-info <file_to_save_info> - Save uploaded files info to the given filename."
     echo -e "-z | --config <config_path> - Override default config file with custom config file."
     echo -e "-D | --debug - Display script command trace."
     echo -e "-h | --help - Display usage instructions.\n"
@@ -47,14 +48,14 @@ if [ -e "$HOME"/.googledrive.conf ]; then
 fi
 
 PROGNAME=${0##*/}
-SHORTOPTS="v,V,hr:C:D,z:"
-LONGOPTS="verbose,verbose-progress,progress-bar,help,create-dir:,root-dir:,debug,config:"
+SHORTOPTS="v,V,i:,hr:C:D,z:"
+LONGOPTS="verbose,verbose-progress,save-info:,help,create-dir:,root-dir:,debug,config:"
 
 set -o errexit -o noclobber -o pipefail #-o nounset
 OPTS=$(getopt -s bash --options $SHORTOPTS --longoptions $LONGOPTS --name "$PROGNAME" -- "$@")
 
 # script to parse the input arguments
-#if [ $? != 0 ] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
+#if [ $? != 0] ; then echo "Failed parsing options." >&2 ; exit 1 ; fi
 
 eval set -- "$OPTS"
 
@@ -74,6 +75,10 @@ while true; do
             VERBOSE_PROGRESS=true
             curl_args=""
             shift
+            ;;
+        -i | --save-info)
+            LOG_FILE_ID="$2"
+            shift 2
             ;;
         -h | --help)
             usage
@@ -112,7 +117,6 @@ if [ -n "$CONFIG" ]; then
     if [ -e "$CONFIG" ]; then
         source "$CONFIG"
     fi
-
 fi
 
 if [ -n "$1" ]; then
@@ -128,7 +132,77 @@ if [ "$#" = "0" ] && [ -z "$FOLDERNAME" ]; then
     exit 0
 fi
 
-echo "Starting script.."
+# This refreshes the interactive shell so we can use the $COLUMNS variable.
+cat /dev/null
+
+# https://gist.github.com/TrinityCoder/911059c83e5f7a351b785921cf7ecdaa
+if [ "$DEBUG" = true ]; then
+    # To avoid spamming in debug mode.
+    function print_center() {
+        echo -e "${1}"
+    }
+    function print_center_justify() {
+        echo -e "${1}"
+    }
+else
+    function print_center() {
+        [[ $# == 0 ]] && return 1
+        declare -i TERM_COLS="$COLUMNS"
+
+        out="$1"
+
+        declare -i str_len=${#out}
+        [[ $str_len -ge $TERM_COLS ]] && {
+            echo "$out"
+            return 0
+        }
+
+        declare -i filler_len="$(((TERM_COLS - str_len) / 2))"
+        [[ $# -ge 2 ]] && ch="${2:0:1}" || ch=" "
+        filler=""
+        for ((i = 0; i < filler_len; i++)); do
+            filler="${filler}${ch}"
+        done
+
+        printf "%s%s%s" "$filler" "$out" "$filler"
+        [[ $(((TERM_COLS - str_len) % 2)) -ne 0 ]] && printf "%s" "${ch}"
+        printf "\n"
+
+        return 0
+    }
+    # To avoid entering a new line, and maintaining the output flow.
+    function print_center_justify() {
+        [[ $# == 0 ]] && return 1
+        declare -i TERM_COLS="$COLUMNS"
+
+        out="$1"
+
+        TO_PRINT="$((TERM_COLS * 98 / 100))"
+        if [ "${#1}" -gt "$TO_PRINT" ]; then
+            out="${1:0:$TO_PRINT}.."
+        fi
+
+        declare -i str_len=${#out}
+        [[ $str_len -ge $TERM_COLS ]] && {
+            echo "$out"
+            return 0
+        }
+
+        declare -i filler_len="$(((TERM_COLS - str_len) / 2))"
+        [[ $# -ge 2 ]] && ch="${2:0:1}" || ch=" "
+        filler=""
+        for ((i = 0; i < filler_len; i++)); do
+            filler="${filler}${ch}"
+        done
+
+        printf "%s%s%s" "$filler" "$out" "$filler"
+        [[ $(((TERM_COLS - str_len) % 2)) -ne 0 ]] && printf "%s" "${ch}"
+        printf "\n"
+
+        return 0
+    }
+fi
+print_center " Starting script " "="
 
 if [ -n "$VERBOSE_PROGRESS" ]; then
     if [ -n "$VERBOSE" ]; then
@@ -245,8 +319,7 @@ function uploadFile() {
     EXTENSION="${SLUG##*.}"
     INPUTSIZE="$(stat -c%s "$INPUT")"
     READABLE_SIZE="$(du -sh "$INPUT" | awk '{print $1;}')"
-    #info "File: ""${INPUT//$DIR\//}"""
-    echo "File: ""$(basename "$INPUT")"" ""$READABLE_SIZE"""
+    print_center_justify " File: ""$(basename "$INPUT")"" | ""$READABLE_SIZE"" " "="
     if [[ "$INPUTNAME" == "$EXTENSION" ]]; then
         if command -v mimetype > /dev/null 2>&1; then
             MIME_TYPE="$(mimetype --output-format %m "$INPUT")"
@@ -263,7 +336,7 @@ function uploadFile() {
     postData="{\"mimeType\": \"$MIME_TYPE\",\"name\": \"$SLUG\",\"parents\": [\"$FOLDER_ID\"]}"
 
     # Curl command to initiate resumable upload session and grab the location URL
-    echo "Generating upload link..."
+    print_center " Generating upload link... " "="
     uploadlink="$(curl \
         --silent \
         -X POST \
@@ -281,7 +354,7 @@ function uploadFile() {
         # If the file size is large then the content can be split to chunks and uploaded.
         # In that case content range needs to be specified.
         clear 1
-        echo "Uploading..."
+        print_center " Uploading... " "="
         if [ -n "$curl_args" ]; then
             curl \
                 -X PUT \
@@ -290,9 +363,9 @@ function uploadFile() {
                 -H "Content-Length: $INPUTSIZE" \
                 -H "Slug: $SLUG" \
                 -T "$INPUT" \
-                --output /dev/null \
+                -o- \
                 --url "$uploadlink" \
-                "$curl_args"
+                "$curl_args" >> "$STRING"
         else
             curl \
                 -X PUT \
@@ -301,24 +374,40 @@ function uploadFile() {
                 -H "Content-Length: $INPUTSIZE" \
                 -H "Slug: $SLUG" \
                 -T "$INPUT" \
-                --output /dev/null \
-                --url "$uploadlink"
+                -o- \
+                --url "$uploadlink" >> "$STRING"
         fi
 
+        FILE_LINK="$(jsonValue id < "$STRING" | sed 's|^|https://drive.google.com/open?id=|')"
+        # Log to the filename provided with -i/--save-id flag.
+        if [ -n "$LOG_FILE_ID" ]; then
+            if [ -f "$STRING" ]; then
+                # shellcheck disable=SC2129
+                echo "$FILE_LINK" >> "$LOG_FILE_ID"
+                jsonValue name < "$STRING" | sed "s/^/Name\: /" >> "$LOG_FILE_ID"
+                jsonValue id < "$STRING" | sed "s/^/ID\: /" >> "$LOG_FILE_ID"
+                jsonValue mimeType < "$STRING" | sed "s/^/Type\: /" >> "$LOG_FILE_ID"
+                printf '\n' >> "$LOG_FILE_ID"
+            fi
+        fi
+
+        if [ -f "$STRING" ]; then rm "$STRING"; fi
+
         if [ "$VERBOSE_PROGRESS" = true ]; then
-            echo "File: ""$INPUTNAME"" (""$READABLE_SIZE"") Uploaded"
+            print_center_justify " File: $SLUG | $READABLE_SIZE | Uploaded. " "="
         else
             clear 1
             clear 1
             clear 1
-            echo "File: ""$INPUTNAME"" (""$READABLE_SIZE"") Uploaded"
+            print_center_justify " File: $SLUG | $READABLE_SIZE | Uploaded. " "="
         fi
     else
-        echo "Upload link generation error, file not uploaded."
+        print_center " Upload link generation error, file not uploaded. " "="
+        echo -e "\n"
     fi
 }
 
-echo "Checking credentials.."
+print_center " Checking credentials... " "="
 # Credentials
 if [ -z "$CLIENT_ID" ]; then
     read -r -p "Client ID: " CLIENT_ID
@@ -351,7 +440,8 @@ if [ -z "$REFRESH_TOKEN" ]; then
 
             echo "REFRESH_TOKEN=""$REFRESH_TOKEN""" >> "$HOME"/.googledrive.conf
         else
-            echo -e "\nNo code provided, run the script and try again"
+            echo
+            print_center "No code provided, run the script and try again" "="
             exit 1
         fi
     fi
@@ -370,8 +460,8 @@ fi
 
 clear 1
 clear 1
-echo "Required credentials available."
-echo "Checking root dir and workspace folder.."
+print_center " Required credentials available " "="
+print_center " Checking root dir and workspace folder... " "="
 # Setup root directory where all file/folders will be uploaded.
 if [ -n "$ROOTDIR" ]; then
     ROOT_FOLDER="$(echo "$ROOTDIR" | tr -d ' ' | tr -d '[:blank:]' | tr -d '[:space:]')"
@@ -381,7 +471,7 @@ if [ -n "$ROOTDIR" ]; then
             ROOT_FOLDER="$ROOT_FOLDER"
             echo "ROOT_FOLDER=$ROOT_FOLDER" >> "$HOME"/.googledrive.conf
         else
-            echo "Given root folder ID/URL invalid."
+            print_center " Given root folder ID/URL invalid. " "="
             exit 1
         fi
     fi
@@ -394,7 +484,7 @@ elif [ -z "$ROOT_FOLDER" ]; then
             ROOT_FOLDER="$ROOT_FOLDER"
             echo "ROOT_FOLDER=$ROOT_FOLDER" >> "$HOME"/.googledrive.conf
         else
-            echo "Given root folder ID/URL invalid."
+            print_center " Given root folder ID/URL invalid. " "="
             exit 1
         fi
     else
@@ -405,7 +495,7 @@ fi
 
 clear 1
 clear 1
-echo "Root dir properly configured."
+print_center " Root dir properly configured " "="
 # Check to find whether the folder exists in google drive. If not then the folder is created in google drive under the configured root folder.
 if [ -z "$FOLDERNAME" ]; then
     ROOT_FOLDER_ID=$ROOT_FOLDER
@@ -414,7 +504,7 @@ else
 fi
 ROOT_FOLDER_NAME="$(drive_Info """$ROOT_FOLDER_ID""" name """$ACCESS_TOKEN""")"
 clear 1
-echo "Workspace Folder: $ROOT_FOLDER_NAME ($ROOT_FOLDER_ID)"
+print_center " Workspace Folder: ""$ROOT_FOLDER_NAME"" | ""$ROOT_FOLDER_ID"" " "="
 
 START=$(date +"%s")
 
@@ -423,40 +513,69 @@ START=$(date +"%s")
 # In case of folder, do a recursive upload in the same hierarchical manner present.
 if [ -n "$input" ]; then
     if [ -f "$input" ]; then
-        echo -e "Given Input: File\n"
+        print_center " Given Input: FILE " "="
+        echo
         uploadFile "$input" "$ROOT_FOLDER_ID" "$ACCESS_TOKEN"
+        print_center " DriveLink " "="
+        print_center "$(echo -e "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93")"
+        print_center "$FILE_LINK"
         echo
     elif [ -d "$input" ]; then
-        echo "Given Input: Folder"
+        FOLDER_NAME="$(basename "$input")"
+        print_center " Given Input: FOLDER " "="
+        echo
+        print_center " Folder Name: $FOLDER_NAME " "="
         NEXTROOTDIRID="$ROOT_FOLDER_ID"
         # Do not create empty folders during a recursive upload.
         # The use of find in this section is important.
         # If below command is used, it lists the folder in stair structure, which we later assume while creating sub folders and uploading files.
         find "$input" -type d -not -empty | sed "s|$input|$DIR/$input|" > "$STRING"DIRNAMES
+        NO_OF_SUB_FOLDERS="$(sed '1d' "$STRING"DIRNAMES | wc -l)"
         # Create a loop and make folders according to list made above.
-        if [ -n "$(sed '1d' "$STRING"DIRNAMES)" ]; then
-            echo "Indexing sub-directories..."
+        if [ -n "$NO_OF_SUB_FOLDERS" ]; then
+            print_center " ""$NO_OF_SUB_FOLDERS"" Sub-folders found. " "="
+            print_center " Creating sub-folders... " "="
+            echo
         fi
 
         while IFS= read -r dir; do
             newdir="$(basename "$dir")"
+            if [ -n "$NO_OF_SUB_FOLDERS" ]; then
+                print_center_justify " Name: ""$newdir"" " "="
+            fi
             ID="$(createDirectory "$newdir" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
             # Store sub-folder directory IDs and it's path for later use.
             echo "$ID '$dir'" >> "$STRING"DIRIDS
             NEXTROOTDIRID=$ID
+            if [ -n "$NO_OF_SUB_FOLDERS" ]; then
+                clear 1
+                clear 1
+                print_center " Status: $(wc -l < "$STRING"DIRIDS) / ""$NO_OF_SUB_FOLDERS"" " "="
+            fi
         done < "$STRING"DIRNAMES
 
-        if [ -n "$(sed '1d' "$STRING"DIRNAMES)" ]; then
+        if [ -n "$NO_OF_SUB_FOLDERS" ]; then
             clear 1
-            echo -e "No. of sub-directories: ""$(sed '1d' "$STRING"DIRNAMES | wc -l)""\n"
+            clear 1
+            clear 1
+            print_center " ""$NO_OF_SUB_FOLDERS"" Sub-folders created " "="
         fi
 
         if [ -f "$STRING"DIRNAMES ]; then rm "$STRING"DIRNAMES; fi
-        echo "Indexing files recursively..."
+
+        print_center " Indexing files recursively... " "="
         find "$input" -type f | sed "s|$input|$DIR/$input|" > "$STRING"FILENAMES
-        clear 1
-        clear 1
-        echo "No. of Files: ""$(grep -c "" "$STRING"FILENAMES)"""
+        NO_OF_FILES="$(wc -l < "$STRING"FILENAMES)"
+        if [ -n "$NO_OF_SUB_FOLDERS" ]; then
+            clear 1
+            clear 1
+            clear 1
+            print_center_justify " Folder Name: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) | ""$NO_OF_SUB_FOLDERS"" Sub-folders " "="
+        else
+            clear 1
+            clear 1
+            print_center_justify " Folder Name: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) | 0 Sub-folders " "="
+        fi
         if [ "$VERBOSE" = true ] || [ "$VERBOSE_PROGRESS" = true ]; then
             echo
         else
@@ -473,21 +592,23 @@ if [ -n "$input" ]; then
             echo "$file" >> "$STRING"UPLOADED
             uploaded="$(grep -c "" "$STRING"UPLOADED)"
             if [ "$VERBOSE" = true ] || [ "$VERBOSE_PROGRESS" = true ]; then
-                echo -e "Status: $uploaded files uploaded.\n"
+                print_center " Status: ""$uploaded"" / ""$NO_OF_FILES"" " "="
+                echo
             else
                 clear 1
                 clear 1
-                echo "Status: $uploaded files uploaded."
+                print_center " Status: ""$uploaded"" / ""$NO_OF_FILES"" " "="
             fi
         done 4< "$STRING"FILES_ROOTDIR 5< "$STRING"FILENAMES
 
-        if [ "$VERBOSE" = true ] || [ "$VERBOSE_PROGRESS" = true ]; then
-            echo -e "Total Files Uploaded: ""$(grep -c "" "$STRING"FILENAMES)""\n"
-        else
-            clear 1
-            clear 1
-            echo -e "Total Files Uploaded: ""$(grep -c "" "$STRING"FILENAMES)""\n"
-        fi
+        clear 1
+        clear 1
+        print_center " FolderLink " "="
+        print_center "$(echo -e "\xe2\x86\x93   \xe2\x86\x93   \xe2\x86\x93")"
+        print_center "$(head -n1 "$STRING"DIRIDS | awk '{print $1;}' | sed -e 's|^|https://drive.google.com/open?id=|')"
+
+        echo
+        print_center " Total Files Uploaded: ""$(grep -c "" "$STRING"FILENAMES)"" " "="
 
         if [ -f "$STRING"DIRIDS ]; then rm "$STRING"DIRIDS; fi
         if [ -f "$STRING"FILES_ROOTDIR ]; then rm "$STRING"FILES_ROOTDIR; fi
@@ -498,7 +619,7 @@ fi
 
 END="$(date +"%s")"
 DIFF="$((END - START))"
-echo "Total time elapsed: "$((DIFF / 60))" minute(s) and "$((DIFF % 60))" seconds"
+print_center " Total time elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds " "="
 
 if [ "$DEBUG" = true ]; then
     set +xe

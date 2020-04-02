@@ -48,6 +48,7 @@ Other Options available are
     -r | --root-dir <google_folderid> - google folder id to which the file/directory to upload.
     -v | --verbose - Display detailed message.
     -V | --verbose-progress - Display detailed message and detailed upload progress( curl normal progress info ).
+    -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename."
     -h | --help - Display usage instructions.
     -z | --config - Override default config file with custom config file.
     -D | --debug - Display script command trace."
