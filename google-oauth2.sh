@@ -9,7 +9,7 @@
 # Set CLIENT_ID and CLIENT_SECRET and SCOPE
 # See SCOPES at https://developers.google.com/identity/protocols/oauth2/scopes#docsv1
 
-function short_help() {
+short_help() {
     echo -e "\nNo valid arguments provided."
     echo -e "Usage:\n"
     echo -e " ./google-oauth2.sh create - authenticates a user."
@@ -17,20 +17,15 @@ function short_help() {
     exit 0
 }
 
-if [ "$#" = "0" ]; then
-    short_help
-    exit 0
-fi
+[ "$#" = "0" ] && short_help
 
 # Clear nth no. of line to the beginning of the line.
-function clear() {
+clear_line() {
     echo -en "\033[""$1""A"
     echo -en "\033[2K"
 }
 
-if ! [ "$1" = create ] || [ "$1" = refresh ]; then
-    short_help
-fi
+[ "$1" = create ] || [ "$1" = refresh ] || short_help
 
 echo "Starting script.."
 
@@ -40,9 +35,7 @@ SCOPE="https://www.googleapis.com/auth/drive"
 REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
 
 # shellcheck source=/dev/null
-if [ -e "$HOME"/.googledrive.conf ]; then
-    source "$HOME"/.googledrive.conf
-fi
+[ -e "$HOME"/.googledrive.conf ] && source "$HOME"/.googledrive.conf
 
 echo "Checking credentials.."
 
@@ -59,15 +52,15 @@ if [ -z "$CLIENT_SECRET" ]; then
 fi
 
 sleep 1
-clear 1
-clear 1
+clear_line 1
+clear_line 1
 echo "Required credentials set."
 sleep 1
 
 # Method to extract data from json response
-function jsonValue() {
-    num=$2
-    grep \""$1"\" | sed "s/\:/\n/" | grep -v \""$1"\" | sed "s/\"\,//g" | sed 's/["]*$//' | sed 's/[,]*$//' | sed 's/^[ \t]*//' | sed s/\"// | sed -n "${num}"p
+jsonValue() {
+    num="$2"
+    grep \""$1"\" | sed "s/\:/\n/" | grep -v \""$1"\" | sed -e "s/\"\,//g" -e 's/["]*$//' -e 's/[,]*$//' -e 's/^[ \t]*//' -e s/\"// | sed -n "${num}"p
 }
 
 if [ "$1" == "create" ]; then

@@ -13,11 +13,13 @@ This script does not have very many dependencies. Most of the dependencies are a
 - find command
 - awk
 - getopt
+- xargs
 
 ## Features
 
 - No dependencies at all.
 - Upload files and folders.
+- Upload files in parallel.
 - Upload sub-folders and content inside it hierarchically.
 - Config file support ( easy to use script on multiple machines ).
 - Uses latest gdrive v3 api.
@@ -46,6 +48,8 @@ Other Options available are
 
     -C | --create-dir <foldername> - option to create directory. Will provide folder id.
     -r | --root-dir <google_folderid> - google folder id to which the file/directory to upload.
+    -s | --skip-subdirs - Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.
+    -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, only works along with --skip-subdirs/-s option, Max value = 10, low value are recommended.
     -v | --verbose - Display detailed message.
     -V | --verbose-progress - Display detailed message and detailed upload progress( curl normal progress info ).
     -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename."
