@@ -12,6 +12,7 @@ usage() {
     echo -e "  -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.\n"
     echo -e "  -s | --skip-subdirs - Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.\n"
     echo -e "  -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, only works along with --skip-subdirs/-s option, Max value = 10\n"
+    echo -e "  -S | --share - Share the uploaded input file/folder, grant reader permission to the everyone with the link.\n"
     echo -e "  -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n"
     echo -e "  -z | --config <config_path> - Override default config file with custom config file.\n"
     echo -e "  -v | --verbose - Display detailed message.\n"
@@ -29,26 +30,36 @@ shortHelp() {
 # Print short help
 [ "$#" = "0" ] && shortHelp
 
-# allow a command to fail with !’s side effect on errexit
-# use return value from ${PIPESTATUS[0]}, because ! hosed $?
-getopt --test > /dev/null && exit 1
-if [ "${PIPESTATUS[0]}" -ne 4 ]; then
-    echo 'getopt --test failed in this environment, cannot run the script.'
-    exit 1
+if ! [[ "$1" == -* ]]; then
+    FIRST_INPUT="$1"
+    shift
+    if [ -n "$FIRST_INPUT" ]; then
+        if ! [[ "$1" == -* ]]; then
+            FOLDER_INPUT="$1"
+            shift
+        fi
+    fi
 fi
 
-PROGNAME=${0##*/}
-SHORTOPTS="v,V,i:,s,p:,hr:C:D,z:"
-LONGOPTS="verbose,verbose-progress,save-info:,help,create-dir:,root-dir:,debug,config:"
-
-if ! OPTS=$(getopt -q --options "$SHORTOPTS" --longoptions "$LONGOPTS" --name "$PROGNAME" -- "$@"); then
-    shortHelp
-    exit 1
-fi
+for arg in "$@"; do
+    shift
+    case "$arg" in
+        "--verbose") eval set -- "$@" "-v" ;;
+        "--verbose-progress" | "-V") eval set -- "$@" "-V" ;;
+        "--save-info") eval set -- "$@" "-i" ;;
+        "--share") eval set -- "$@" "-S" ;;
+        "--create-dir") eval set -- "$@" "-C" ;;
+        "--root-dir") eval set -- "$@" "-r" ;;
+        "--skip-subdirs") eval set -- "$@" "-s" ;;
+        "--parallel") eval set -- "$@" "-p" ;;
+        "--debug") eval set -- "$@" "-D" ;;
+        "--config") eval set -- "$@" "-z" ;;
+        "--help") eval set -- "$@" "-h" ;;
+        *) eval set -- "$@" "$arg" ;;
+    esac
+done
 
 set -o errexit -o noclobber -o pipefail # -o nounset
-
-eval set -- "$OPTS"
 
 #Configuration variables
 ROOT_FOLDER=""
@@ -78,67 +89,70 @@ LOG_FILE_ID=""
 SKIP_SUBDIRS=""
 PARALLEL=""
 NO_OF_PARALLEL_JOBS=""
+SHARE=""
 
-while true; do
-    case "${1}" in
-        -h | --help)
+SHORTOPTS=":vVi:sp:Shr:C:Dz:"
+
+while getopts "${SHORTOPTS}" OPTION; do
+    case "$OPTION" in
+        h)
             usage
-            shift
             ;;
-        -C | --create-dir)
-            FOLDERNAME="$2"
-            shift 2
+        C)
+            FOLDERNAME="$OPTARG"
             ;;
-        -r | --root-dir)
-            ROOTDIR="$2"
-            shift 2
+        r)
+            ROOTDIR="$OPTARG"
             ;;
-        -z | --config)
-            CONFIG="$2"
-            shift 2
+        z)
+            CONFIG="$OPTARG"
             ;;
-        -i | --save-info)
-            LOG_FILE_ID="$2"
-            shift 2
+        i)
+            LOG_FILE_ID="$OPTARG"
             ;;
-        -s | --skip-subdirs)
+        s)
             SKIP_SUBDIRS=true
-            shift
             ;;
-        -p | --parallel)
+        p)
             PARALLEL=true
-            NO_OF_PARALLEL_JOBS="$2"
-            shift 2
+            NO_OF_PARALLEL_JOBS="$OPTARG"
             ;;
-        -v | --verbose)
+        S)
+            SHARE=true
+            ;;
+        v)
             VERBOSE=true
-            shift
             ;;
-        -V | --verbose-progress)
+        V)
             VERBOSE_PROGRESS=true
             CURL_ARGS=""
-            shift
             ;;
-        -D | --debug)
+        D)
             DEBUG=true
-            shift
             ;;
-        --)
-            shift
-            break
+        :)
+            echo -e "${0}: -$OPTARG: option requires an argument\nTry '"$0 -h/--help"' for more information." && exit 1
             ;;
-        *) break ;;
+        ?)
+            echo -e "${0}: -$OPTARG: unknown option\nTry '"$0 -h/--help"' for more information." >&2 && exit 1
+            ;;
     esac
 done
+shift $((OPTIND - 1))
 
-if [ -n "$1" ]; then
-    INPUT="$1"
-    if [[ ! -f $INPUT ]] && [[ ! -d $INPUT ]]; then
-        echo -e "\nError: Invalid Input, no such  or directory.\n"
-        exit 1
+if [ -z "$FIRST_INPUT" ]; then
+    [ -n "$1" ] && INPUT="$1"
+     [ -n "$INPUT" ] && [ -n "$2" ] && FOLDER_INPUT="$2"
+elif [ -z "$INPUT" ]; then
+    if [ -n "$FIRST_INPUT" ]; then
+        INPUT="$FIRST_INPUT"
+        if [[ ! -f $INPUT ]] && [[ ! -d $INPUT ]]; then
+            echo -e "\nError: Invalid Input, no such  or directory.\n"
+            exit 1
+        fi
+    elif [ -z "$FOLDERNAME" ]; then
+        shortHelp
     fi
-elif [ -z "$FOLDERNAME" ]; then
-    shortHelp
 fi
 
 if [ -n "$PARALLEL" ]; then
@@ -159,6 +173,12 @@ if [ -n "$PARALLEL" ]; then
     elif [ -f "$INPUT" ]; then
         unset PARALLEL
     fi
+fi
+
+# If the internet connection is not available, curl gives "000" output, so add a check for it.
+if ! curl -Is --write-out "%{http_code}" --output /dev/null "google.com" > /dev/null 2>&1; then
+    printf '\nError: Internet connection not available.\n\n'
+    exit 1
 fi
 
 if [ -n "$DEBUG" ]; then
@@ -242,7 +262,7 @@ fi
 # shellcheck source=/dev/null
 [ -n "$CONFIG" ] && [ -e "$CONFIG" ] && source "$CONFIG"
 
-[ -n "${2}" ] && [ -z "$FOLDERNAME" ] && FOLDERNAME="${2}"
+[ -n "$FOLDER_INPUT" ] && [ -z "$FOLDERNAME" ] && FOLDERNAME="${FOLDER_INPUT}"
 
 printCenter "[ Starting script ]" "="
 
@@ -254,7 +274,7 @@ extractID() {
     case "$ID" in
         'http'*'://'*'drive.google.com'*'id='*) ID=$(echo "$ID" | sed -e 's/^.*id=//' -e 's|&|\n|' | head -1) ;;
         'http'*'drive.google.com'*'file/d/'* | 'http'*'docs.google.com/file/d/'*) ID=$(echo "$ID" | sed -e's/^.*\/d\///' -e 's/\/.*//') ;;
-        'http'*'drive.google.com'*'drive'*'folders'*) ID=$(echo "$ID" | sed -e 's/^.*\/folders\///' -e "s/&.*//" -e -r 's/(.*)\/.*/\1 /') ;;
+        'http'*'drive.google.com'*'drive'*'folders'*) ID=$(echo "$ID" | sed -e 's/^.*\/folders\///' -e "s/&.*//" -e "s/?.*//") ;;
     esac
     echo "$ID"
 }
@@ -268,7 +288,7 @@ clearLine() {
 # Method to extract data from json response
 jsonValue() {
     num="$2"
-    grep \""$1"\" | sed "s/\:/\n/" | grep -v \""$1"\" | sed -e "s/\"\,//g" -e 's/["]*$//' -e 's/[,]*$//' -e 's/^[ \t]*//' -e s/\"// | sed -n "${num}"p
+    grep -o \""$1"\"\:.* | sed -e "s/^.*: //" -e "s/\"\,//g" -e 's/["]*$//' -e 's/[,]*$//' -e 's/^[ \t]*//' -e "s/\"//" -n -e "${num}"p
 }
 
 # Usage: urlEncode "string"
@@ -363,9 +383,9 @@ uploadFile() {
     local EXTENSION
     EXTENSION="${SLUG##*.}"
     local INPUTSIZE
-    INPUTSIZE="$(stat -c%s "$INPUT")"
+    INPUTSIZE="$(wc -c < "$INPUT")"
     local READABLE_SIZE
-    READABLE_SIZE="$(du -sh "$INPUT" | awk '{print $1;}')"
+    READABLE_SIZE="$(du -h "$INPUT" | awk '{print $1;}')"
     [ -z "$PARALLEL" ] && printCenterJustify "[ ""$(basename "$INPUT")"" | ""$READABLE_SIZE"" ]" "="
 
     if [[ $INPUTNAME == "$EXTENSION" ]]; then
@@ -386,7 +406,7 @@ uploadFile() {
     POSTDATA="{\"mimeType\": \"$MIME_TYPE\",\"name\": \"$SLUG\",\"parents\": [\"$FOLDER_ID\"]}"
 
     # Curl command to initiate resumable upload session and grab the location URL
-    [ -z "$PARALLEL" ] && printCenter "[ Generating upload link... ]" "="
+    [ -z "$PARALLEL" ] && printCenter "[ Generating upload link...]" "="
     local UPLOADLINK
     UPLOADLINK="$(curl \
         --silent \
@@ -404,7 +424,7 @@ uploadFile() {
         # Curl command to push the file to google drive.
         # If the file size is large then the content can be split to chunks and uploaded.
         # In that case content range needs to be specified.
-        [ -z "$PARALLEL" ] && clearLine 1 && printCenter "[ Uploading... ]" "="
+        [ -z "$PARALLEL" ] && clearLine 1 && printCenter "[ Uploading...]" "="
         if [ -n "$CURL_ARGS" ]; then
             local UPLOAD_BODY
             UPLOAD_BODY="$(curl \
@@ -431,13 +451,14 @@ uploadFile() {
         fi
 
         FILE_LINK="$(echo "$UPLOAD_BODY" | jsonValue id | sed 's|^|https://drive.google.com/open?id=|')"
+        FILE_ID="$(echo "$UPLOAD_BODY" | jsonValue id)"
         # Log to the filename provided with -i/--save-id flag.
         if [ -n "$LOG_FILE_ID" ]; then
             if ! [ -d "$LOG_FILE_ID" ]; then
                 if [ -n "$UPLOAD_BODY" ]; then
                     # shellcheck disable=SC2129
                     # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-                    echo "$FILE_LINK" >> "$LOG_FILE_ID"
+                    echo "Link: $FILE_LINK" >> "$LOG_FILE_ID"
                     echo "$UPLOAD_BODY" | jsonValue name | sed "s/^/Name\: /" >> "$LOG_FILE_ID"
                     echo "$UPLOAD_BODY" | jsonValue id | sed "s/^/ID\: /" >> "$LOG_FILE_ID"
                     echo "$UPLOAD_BODY" | jsonValue mimeType | sed "s/^/Type\: /" >> "$LOG_FILE_ID"
@@ -462,6 +483,30 @@ uploadFile() {
         UPLOAD_STATUS=ERROR
         export UPLOAD_STATUS
     fi
+}
+
+# Method to share a gdrive file/folder
+# Requirements: Given file/folder ID, type, role and access_token.
+shareID() {
+    local ID
+    ID="$1"
+    local ROLE
+    ROLE="reader"
+    local TYPE
+    TYPE="anyone"
+    local ACCESS_TOKEN
+    ACCESS_TOKEN="$2"
+    local SHARE_POST_DATA
+    SHARE_POST_DATA="{\"role\":\"$ROLE\",\"type\":\"$TYPE\"}"
+
+    curl \
+        --silent \
+        --output /dev/null \
+        -X POST \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+        -H "Content-Type: application/json; charset=UTF-8" \
+        -d "$SHARE_POST_DATA" \
+        "https://www.googleapis.com/drive/v3/files/""$ID""/permissions"
 }
 
 printCenter "[ Checking credentials... ]" "="
@@ -578,6 +623,7 @@ if [ -n "$INPUT" ]; then
         printCenter "[ Given Input: FILE ]" "="
         echo
         uploadFile "$INPUT" "$ROOT_FOLDER_ID" "$ACCESS_TOKEN"
+        [ -n "$SHARE" ] && printCenter "[ Making File Public..]" "=" && shareID "$FILE_ID" "$ACCESS_TOKEN" && clearLine 1
         printCenter "[ DriveLink ]" "="
         printCenter "$(echo -e "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93")"
         printCenter "$FILE_LINK"
@@ -732,6 +778,7 @@ if [ -n "$INPUT" ]; then
             clearLine 1
         fi
         if ! [ "$SUCESS_STATUS" = 0 ]; then
+            [ -n "$SHARE" ] && printCenter "[ Making Folder Public..]" "=" && shareID "$(head -n1 "$STRING"DIRIDS | awk '{print $1;}')" "$ACCESS_TOKEN" && clearLine 1
             printCenter "[ FolderLink ]" "="
             printCenter "$(echo -e "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93")"
             printCenter "$(head -n1 "$STRING"DIRIDS | awk '{print $1;}' | sed -e 's|^|https://drive.google.com/open?id=|')"
