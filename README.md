@@ -29,6 +29,19 @@ This script does not have very many dependencies. Most of the dependencies are a
 ## Usage
 
 When the script is executed for the first time. It asks for few configuration variables interactively to connect with google APIs. The script requires Client ID and Client secret to access the APIs which can be generated at [google console].
+
+### Generating Google OAuth2 Credentials
+- Log into google developer console at [google console].
+- Create new Project or use existing project if you don't have a project already created.
+- Create new OAuth 2.0 Credentials
+    - Select Application type "other"
+    - Provide name for the new credentials
+    - This would provide a new client ID and Client Secret
+- Enable Google Drive API for the project under "Library"
+
+*Note:* When the script is run for the first time. The script must be authorized in browser. This may show a certificate warning if the application authorized domain is not configured on google console project.
+
+### Running the script
 Script also asks for root folder to be set to which the script uploads documents by default. The default folder will be the root of your google drive. If you want to upload documents to any specific directory by default then provide the google folder ID or URL of that folder when root folder ID/URL is requested.
 
 For example

@@ -64,7 +64,7 @@ jsonValue() {
 }
 
 if [ "$1" == "create" ]; then
-    echo "\nVisit the below URL, tap on allow and then enter the code obtained:"
+    echo "Visit the below URL, tap on allow and then enter the code obtained:"
     sleep 1
     URL="https://accounts.google.com/o/oauth2/auth?client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=$SCOPE&response_type=code&prompt=consent"
     echo -e """$URL""\n"

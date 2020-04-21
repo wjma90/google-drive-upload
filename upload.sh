@@ -44,18 +44,18 @@ fi
 for arg in "$@"; do
     shift
     case "$arg" in
-        "--verbose") eval set -- "$@" "-v" ;;
-        "--verbose-progress" | "-V") eval set -- "$@" "-V" ;;
-        "--save-info") eval set -- "$@" "-i" ;;
-        "--share") eval set -- "$@" "-S" ;;
-        "--create-dir") eval set -- "$@" "-C" ;;
-        "--root-dir") eval set -- "$@" "-r" ;;
-        "--skip-subdirs") eval set -- "$@" "-s" ;;
-        "--parallel") eval set -- "$@" "-p" ;;
-        "--debug") eval set -- "$@" "-D" ;;
-        "--config") eval set -- "$@" "-z" ;;
-        "--help") eval set -- "$@" "-h" ;;
-        *) eval set -- "$@" "$arg" ;;
+    "--verbose") eval set -- "$@" "-v" ;;
+    "--verbose-progress" | "-V") eval set -- "$@" "-V" ;;
+    "--save-info") eval set -- "$@" "-i" ;;
+    "--share") eval set -- "$@" "-S" ;;
+    "--create-dir") eval set -- "$@" "-C" ;;
+    "--root-dir") eval set -- "$@" "-r" ;;
+    "--skip-subdirs") eval set -- "$@" "-s" ;;
+    "--parallel") eval set -- "$@" "-p" ;;
+    "--debug") eval set -- "$@" "-D" ;;
+    "--config") eval set -- "$@" "-z" ;;
+    "--help") eval set -- "$@" "-h" ;;
+    *) eval set -- "$@" "$arg" ;;
     esac
 done
 
@@ -95,54 +95,54 @@ SHORTOPTS=":vVi:sp:Shr:C:Dz:"
 
 while getopts "${SHORTOPTS}" OPTION; do
     case "$OPTION" in
-        h)
-            usage
-            ;;
-        C)
-            FOLDERNAME="$OPTARG"
-            ;;
-        r)
-            ROOTDIR="$OPTARG"
-            ;;
-        z)
-            CONFIG="$OPTARG"
-            ;;
-        i)
-            LOG_FILE_ID="$OPTARG"
-            ;;
-        s)
-            SKIP_SUBDIRS=true
-            ;;
-        p)
-            PARALLEL=true
-            NO_OF_PARALLEL_JOBS="$OPTARG"
-            ;;
-        S)
-            SHARE=true
-            ;;
-        v)
-            VERBOSE=true
-            ;;
-        V)
-            VERBOSE_PROGRESS=true
-            CURL_ARGS=""
-            ;;
-        D)
-            DEBUG=true
-            ;;
-        :)
-            echo -e "${0}: -$OPTARG: option requires an argument\nTry '"$0 -h/--help"' for more information." && exit 1
-            ;;
-        ?)
-            echo -e "${0}: -$OPTARG: unknown option\nTry '"$0 -h/--help"' for more information." >&2 && exit 1
-            ;;
+    h)
+        usage
+        ;;
+    C)
+        FOLDERNAME="$OPTARG"
+        ;;
+    r)
+        ROOTDIR="$OPTARG"
+        ;;
+    z)
+        CONFIG="$OPTARG"
+        ;;
+    i)
+        LOG_FILE_ID="$OPTARG"
+        ;;
+    s)
+        SKIP_SUBDIRS=true
+        ;;
+    p)
+        PARALLEL=true
+        NO_OF_PARALLEL_JOBS="$OPTARG"
+        ;;
+    S)
+        SHARE=true
+        ;;
+    v)
+        VERBOSE=true
+        ;;
+    V)
+        VERBOSE_PROGRESS=true
+        CURL_ARGS=""
+        ;;
+    D)
+        DEBUG=true
+        ;;
+    :)
+        echo -e "${0}: -$OPTARG: option requires an argument\nTry '"$0 -h/--help"' for more information." && exit 1
+        ;;
+    ?)
+        echo -e "${0}: -$OPTARG: unknown option\nTry '"$0 -h/--help"' for more information." >&2 && exit 1
+        ;;
     esac
 done
 shift $((OPTIND - 1))
 
 if [ -z "$FIRST_INPUT" ]; then
     [ -n "$1" ] && INPUT="$1"
-     [ -n "$INPUT" ] && [ -n "$2" ] && FOLDER_INPUT="$2"
+    [ -n "$INPUT" ] && [ -n "$2" ] && FOLDER_INPUT="$2"
 elif [ -z "$INPUT" ]; then
     if [ -n "$FIRST_INPUT" ]; then
         INPUT="$FIRST_INPUT"
@@ -162,13 +162,13 @@ if [ -n "$PARALLEL" ]; then
             exit 0
         fi
         case "$NO_OF_PARALLEL_JOBS" in
-            '' | *[!0-9]*)
-                echo -e "\nError: -p/--parallel values range between 1 to 10."
-                exit 0
-                ;;
-            *)
-                [ "$NO_OF_PARALLEL_JOBS" -gt 10 ] && NO_OF_PARALLEL_JOBS=10
-                ;;
+        '' | *[!0-9]*)
+            echo -e "\nError: -p/--parallel values range between 1 to 10."
+            exit 0
+            ;;
+        *)
+            [ "$NO_OF_PARALLEL_JOBS" -gt 10 ] && NO_OF_PARALLEL_JOBS=10
+            ;;
         esac
     elif [ -f "$INPUT" ]; then
         unset PARALLEL
@@ -176,7 +176,7 @@ if [ -n "$PARALLEL" ]; then
 fi
 
 # If the internet connection is not available, curl gives "000" output, so add a check for it.
-if ! curl -Is --write-out "%{http_code}" --output /dev/null "google.com" > /dev/null 2>&1; then
+if ! curl -Is --write-out "%{http_code}" --output /dev/null "google.com" >/dev/null 2>&1; then
     printf '\nError: Internet connection not available.\n\n'
     exit 1
 fi
@@ -272,9 +272,9 @@ printCenter "[ Starting script ]" "="
 extractID() {
     ID="$1"
     case "$ID" in
-        'http'*'://'*'drive.google.com'*'id='*) ID=$(echo "$ID" | sed -e 's/^.*id=//' -e 's|&|\n|' | head -1) ;;
-        'http'*'drive.google.com'*'file/d/'* | 'http'*'docs.google.com/file/d/'*) ID=$(echo "$ID" | sed -e's/^.*\/d\///' -e 's/\/.*//') ;;
-        'http'*'drive.google.com'*'drive'*'folders'*) ID=$(echo "$ID" | sed -e 's/^.*\/folders\///' -e "s/&.*//" -e "s/?.*//") ;;
+    'http'*'://'*'drive.google.com'*'id='*) ID=$(echo "$ID" | sed -e 's/^.*id=//' -e 's|&|\n|' | head -1) ;;
+    'http'*'drive.google.com'*'file/d/'* | 'http'*'docs.google.com/file/d/'*) ID=$(echo "$ID" | sed -e's/^.*\/d\///' -e 's/\/.*//') ;;
+    'http'*'drive.google.com'*'drive'*'folders'*) ID=$(echo "$ID" | sed -e 's/^.*\/folders\///' -e "s/&.*//" -e "s/?.*//") ;;
     esac
     echo "$ID"
 }
@@ -297,12 +297,12 @@ urlEncode() {
     for ((i = 0; i < ${#1}; i++)); do
         : "${1:i:1}"
         case "$_" in
-            [a-zA-Z0-9.~_-])
-                printf '%s' "$_"
-                ;;
-            *)
-                printf '%%%02X' "'$_"
-                ;;
+        [a-zA-Z0-9.~_-])
+            printf '%s' "$_"
+            ;;
+        *)
+            printf '%%%02X' "'$_"
+            ;;
         esac
     done
     printf '\n'
@@ -323,8 +323,15 @@ driveInfo() {
         -XGET \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" \
         "https://www.googleapis.com/drive/v3/files/""$FOLDER_ID""?fields=""$FETCH""")"
+    local FETCHED_DATA
     FETCHED_DATA="$(echo "$SEARCH_RESPONSE" | jsonValue "$FETCH" 1)"
-    echo "$FETCHED_DATA"
+    if [ -z $FETCHED_DATA ]; then
+        echo "$(echo "$SEARCH_RESPONSE" | jsonValue message 1)"
+        return 1
+
+    else
+        echo "$FETCHED_DATA"
+    fi
 }
 
 # Method to create directory in google drive.
@@ -383,16 +390,16 @@ uploadFile() {
     local EXTENSION
     EXTENSION="${SLUG##*.}"
     local INPUTSIZE
-    INPUTSIZE="$(wc -c < "$INPUT")"
+    INPUTSIZE="$(wc -c <"$INPUT")"
     local READABLE_SIZE
     READABLE_SIZE="$(du -h "$INPUT" | awk '{print $1;}')"
     [ -z "$PARALLEL" ] && printCenterJustify "[ ""$(basename "$INPUT")"" | ""$READABLE_SIZE"" ]" "="
 
     if [[ $INPUTNAME == "$EXTENSION" ]]; then
-        if command -v mimetype > /dev/null 2>&1; then
+        if command -v mimetype >/dev/null 2>&1; then
             local MIME_TYPE
             MIME_TYPE="$(mimetype --output-format %m "$INPUT")"
-        elif command -v file > /dev/null 2>&1; then
+        elif command -v file >/dev/null 2>&1; then
             local MIME_TYPE
             MIME_TYPE="$(file --brief --mime-type "$INPUT")"
         else
@@ -458,11 +465,11 @@ uploadFile() {
                 if [ -n "$UPLOAD_BODY" ]; then
                     # shellcheck disable=SC2129
                     # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-                    echo "Link: $FILE_LINK" >> "$LOG_FILE_ID"
-                    echo "$UPLOAD_BODY" | jsonValue name | sed "s/^/Name\: /" >> "$LOG_FILE_ID"
-                    echo "$UPLOAD_BODY" | jsonValue id | sed "s/^/ID\: /" >> "$LOG_FILE_ID"
-                    echo "$UPLOAD_BODY" | jsonValue mimeType | sed "s/^/Type\: /" >> "$LOG_FILE_ID"
-                    printf '\n' >> "$LOG_FILE_ID"
+                    echo "Link: $FILE_LINK" >>"$LOG_FILE_ID"
+                    echo "$UPLOAD_BODY" | jsonValue name | sed "s/^/Name\: /" >>"$LOG_FILE_ID"
+                    echo "$UPLOAD_BODY" | jsonValue id | sed "s/^/ID\: /" >>"$LOG_FILE_ID"
+                    echo "$UPLOAD_BODY" | jsonValue mimeType | sed "s/^/Type\: /" >>"$LOG_FILE_ID"
+                    printf '\n' >>"$LOG_FILE_ID"
                 fi
             fi
         fi
@@ -513,11 +520,11 @@ printCenter "[ Checking credentials... ]" "="
 # Credentials
 if [ -z "$CLIENT_ID" ]; then
     read -r -p "Client ID: " CLIENT_ID
-    echo "CLIENT_ID=$CLIENT_ID" >> "$HOME"/.googledrive.conf
+    echo "CLIENT_ID=$CLIENT_ID" >>"$HOME"/.googledrive.conf
 fi
 if [ -z "$CLIENT_SECRET" ]; then
     read -r -p "Client Secret: " CLIENT_SECRET
-    echo "CLIENT_SECRET=$CLIENT_SECRET" >> "$HOME"/.googledrive.conf
+    echo "CLIENT_SECRET=$CLIENT_SECRET" >>"$HOME"/.googledrive.conf
 fi
 
 # Method to obtain refresh_token.
@@ -527,7 +534,7 @@ if [ -z "$REFRESH_TOKEN" ]; then
     Refresh Token: " REFRESH_TOKEN
     REFRESH_TOKEN="$(echo "$REFRESH_TOKEN" | tr -d ' ' | tr -d '[:blank:]' | tr -d '[:space:]')"
     if [ -n "$REFRESH_TOKEN" ]; then
-        echo "REFRESH_TOKEN=$REFRESH_TOKEN" >> "$HOME"/.googledrive.conf
+        echo "REFRESH_TOKEN=$REFRESH_TOKEN" >>"$HOME"/.googledrive.conf
     else
         echo -e "\nVisit the below URL, tap on allow and then enter the code obtained:"
         URL="https://accounts.google.com/o/oauth2/auth?client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=$SCOPE&response_type=code&prompt=consent"
@@ -540,7 +547,7 @@ if [ -z "$REFRESH_TOKEN" ]; then
             ACCESS_TOKEN="$(echo "$RESPONSE" | jsonValue access_token)"
             REFRESH_TOKEN="$(echo "$RESPONSE" | jsonValue refresh_token)"
 
-            echo "REFRESH_TOKEN=""$REFRESH_TOKEN""" >> "$HOME"/.googledrive.conf
+            echo "REFRESH_TOKEN=""$REFRESH_TOKEN""" >>"$HOME"/.googledrive.conf
         else
             echo
             printCenter "No code provided, run the script and try again" "="
@@ -555,7 +562,7 @@ fi
 if [ -z "$ACCESS_TOKEN" ]; then
     RESPONSE="$(curl -s --request POST --data "client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&refresh_token=$REFRESH_TOKEN&grant_type=refresh_token" https://accounts.google.com/o/oauth2/token)"
     ACCESS_TOKEN="$(echo "$RESPONSE" | jsonValue access_token)"
-elif curl -s "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=$ACCESS_TOKEN" | jsonValue ERROR > /dev/null 2>&1; then
+elif curl -s "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=$ACCESS_TOKEN" | jsonValue ERROR >/dev/null 2>&1; then
     RESPONSE="$(curl -s --request POST --data "client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&refresh_token=$REFRESH_TOKEN&grant_type=refresh_token" https://accounts.google.com/o/oauth2/token)"
     ACCESS_TOKEN="$(echo "$RESPONSE" | jsonValue access_token)"
 fi
@@ -568,10 +575,13 @@ printCenter "[ Checking root dir and workspace folder.. ]" "="
 if [ -n "$ROOTDIR" ]; then
     ROOT_FOLDER="$(echo "$ROOTDIR" | tr -d ' ' | tr -d '[:blank:]' | tr -d '[:space:]')"
     if [ -n "$ROOT_FOLDER" ]; then
-        ROOT_FOLDER="$(driveInfo "$(extractID "$ROOT_FOLDER")" "id" "$ACCESS_TOKEN")"
+        ROOT_FOLDER="$(driveInfo "$(extractID "$ROOT_FOLDER")" "id" "$ACCESS_TOKEN")" || {
+            printCenter "[ $ROOT_FOLDER ]" "="
+            exit 1
+        }
         if [ -n "$ROOT_FOLDER" ]; then
             ROOT_FOLDER="$ROOT_FOLDER"
-            echo "ROOT_FOLDER=$ROOT_FOLDER" >> "$HOME"/.googledrive.conf
+            echo "ROOT_FOLDER=$ROOT_FOLDER" >>"$HOME"/.googledrive.conf
         else
             printCenter "[ Given root folder ID/URL invalid. ]" "="
             exit 1
@@ -581,17 +591,21 @@ elif [ -z "$ROOT_FOLDER" ]; then
     read -r -p "Root Folder ID or URL (Default: root): " ROOT_FOLDER
     ROOT_FOLDER="$(echo "$ROOT_FOLDER" | tr -d ' ' | tr -d '[:blank:]' | tr -d '[:space:]')"
     if [ -n "$ROOT_FOLDER" ]; then
-        ROOT_FOLDER="$(folderInfo "$(extractID "$ROOT_FOLDER")" "$ACCESS_TOKEN")"
+        ROOT_FOLDER="$(driveInfo "$(extractID "$ROOT_FOLDER")" "id" "$ACCESS_TOKEN")" || {
+            printCenter "[ $ROOT_FOLDER ]" "="
+            exit 1
+        }
+
         if [ -n "$ROOT_FOLDER" ]; then
             ROOT_FOLDER="$ROOT_FOLDER"
-            echo "ROOT_FOLDER=$ROOT_FOLDER" >> "$HOME"/.googledrive.conf
+            echo "ROOT_FOLDER=$ROOT_FOLDER" >>"$HOME"/.googledrive.conf
         else
             printCenter "[ Given root folder ID/URL invalid. ]" "="
             exit 1
         fi
     else
         ROOT_FOLDER="root"
-        echo "ROOT_FOLDER=$ROOT_FOLDER" >> "$HOME"/.googledrive.conf
+        echo "ROOT_FOLDER=$ROOT_FOLDER" >>"$HOME"/.googledrive.conf
     fi
 fi
 
@@ -604,7 +618,10 @@ if [ -z "$FOLDERNAME" ]; then
 else
     ROOT_FOLDER_ID="$(createDirectory "$FOLDERNAME" "$ROOT_FOLDER" "$ACCESS_TOKEN")"
 fi
-ROOT_FOLDER_NAME="$(driveInfo """$ROOT_FOLDER_ID""" name """$ACCESS_TOKEN""")"
+ROOT_FOLDER_NAME="$(driveInfo """$ROOT_FOLDER_ID""" name """$ACCESS_TOKEN""")" || {
+    printCenter "[ $ROOT_FOLDER ]" "="
+    exit 1
+}
 clearLine 1
 printCenter "[ Workspace Folder: ""$ROOT_FOLDER_NAME"" | ""$ROOT_FOLDER_ID"" ]" "="
 START=$(date +"%s")
@@ -638,14 +655,14 @@ if [ -n "$INPUT" ]; then
         if [ -n "$SKIP_SUBDIRS" ]; then
             printCenter "[ Indexing files recursively... ]" "="
             FILENAMES="$(find "$INPUT" -type f)"
-            NO_OF_FILES="$(wc -l <<< "$FILENAMES")"
+            NO_OF_FILES="$(wc -l <<<"$FILENAMES")"
             clearLine 1
             clearLine 1
             printCenterJustify "[ Folder: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]" "="
             echo
 
             ID="$(createDirectory "$INPUT" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
-            echo "$ID" >> "$STRING"DIRIDS
+            echo "$ID" >>"$STRING"DIRIDS
             if [ -n "$PARALLEL" ]; then
 
                 export ID
@@ -668,8 +685,8 @@ if [ -n "$INPUT" ]; then
                 echo 1 >> "$STRING"SUCCESS
                 fi
                 '
-                [ -f "$STRING"SUCCESS ] && SUCESS_STATUS="$(wc -l < "$STRING"SUCCESS)"
-                [ -f "$STRING"ERROR ] && ERROR_STATUS="$(wc -l < "$STRING"ERROR)"
+                [ -f "$STRING"SUCCESS ] && SUCESS_STATUS="$(wc -l <"$STRING"SUCCESS)"
+                [ -f "$STRING"ERROR ] && ERROR_STATUS="$(wc -l <"$STRING"ERROR)"
                 if [ -z "$VERBOSE" ] && [ -z "$VERBOSE_PROGRESS" ]; then
                     echo -e "\n\n"
                 else
@@ -694,14 +711,14 @@ if [ -n "$INPUT" ]; then
                         clearLine 1
                         printCenter "[ Status: ""$SUCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED ]" "="
                     fi
-                done 4<<< "$FILENAMES"
+                done 4<<<"$FILENAMES"
             fi
         else
             # Do not create empty folders during a recursive upload.
             # The use of find in this section is important.
             # If below command is used, it lists the folder in stair structure,
             # which we later assume while creating sub folders( if applicable ) and uploading files.
-            find "$INPUT" -type d -not -empty | sed "s|$INPUT|$DIR/$INPUT|" > "$STRING"DIRNAMES
+            find "$INPUT" -type d -not -empty | sed "s|$INPUT|$DIR/$INPUT|" >"$STRING"DIRNAMES
             NO_OF_SUB_FOLDERS="$(sed '1d' "$STRING"DIRNAMES | wc -l)"
             # Create a loop and make folders according to list made above.
             if [ -n "$NO_OF_SUB_FOLDERS" ]; then
@@ -724,7 +741,7 @@ if [ -n "$INPUT" ]; then
                     clearLine 1 1>&2
                     printCenter " Status: ""$status"" / ""$NO_OF_SUB_FOLDERS"" " "=" 1>&2
                 fi
-            done 4< "$STRING"DIRNAMES >> "$STRING"DIRIDS
+            done 4<"$STRING"DIRNAMES >>"$STRING"DIRIDS
 
             if [ -n "$NO_OF_SUB_FOLDERS" ]; then
                 clearLine 1
@@ -735,7 +752,7 @@ if [ -n "$INPUT" ]; then
 
             printCenter "[ Indexing files recursively... ]" "="
             FILENAMES="$(find "$INPUT" -type f | sed "s|$INPUT|$DIR/$INPUT|")"
-            NO_OF_FILES="$(wc -l <<< "$FILENAMES")"
+            NO_OF_FILES="$(wc -l <<<"$FILENAMES")"
             if [ -n "$NO_OF_SUB_FOLDERS" ]; then
                 clearLine 1
                 clearLine 1
@@ -754,7 +771,7 @@ if [ -n "$INPUT" ]; then
 
             # shellcheck disable=SC2001
             # Match the path with sub-folder directory ID and upload accordingly.
-            FILES_ROOTDIR="$(while read -r i; do sed "s/\(.*\)\/$(basename "$i")/\1/" <<< "$i"; done <<< "$FILENAMES")"
+            FILES_ROOTDIR="$(while read -r i; do sed "s/\(.*\)\/$(basename "$i")/\1/" <<<"$i"; done <<<"$FILENAMES")"
 
             while IFS= read -r -u 4 ROOTDIRPATH && IFS= read -r -u 5 file; do
                 DIRTOUPLOAD="$(grep "'$ROOTDIRPATH'" "$STRING"DIRIDS | awk '{print $1;}')"
@@ -770,7 +787,7 @@ if [ -n "$INPUT" ]; then
                     clearLine 1
                     printCenter "[ Status: ""$SUCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED ]" "="
                 fi
-            done 4<<< "$FILES_ROOTDIR" 5<<< "$FILENAMES"
+            done 4<<<"$FILES_ROOTDIR" 5<<<"$FILENAMES"
         fi
 
         if [ -z "$VERBOSE" ] && [ -z "$VERBOSE_PROGRESS" ]; then
