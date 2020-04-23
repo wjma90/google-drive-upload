@@ -12,7 +12,7 @@ usage() {
     echo -e "  -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.\n"
     echo -e "  -s | --skip-subdirs - Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.\n"
     echo -e "  -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, only works along with --skip-subdirs/-s option, Max value = 10\n"
-    echo -e "  -S | --share - Share the uploaded input file/folder, grant reader permission to the everyone with the link.\n"
+    echo -e "  -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n"
     echo -e "  -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n"
     echo -e "  -z | --config <config_path> - Override default config file with custom config file.\n"
     echo -e "  -v | --verbose - Display detailed message.\n"
@@ -90,6 +90,17 @@ SKIP_SUBDIRS=""
 PARALLEL=""
 NO_OF_PARALLEL_JOBS=""
 SHARE=""
+SHARE_EMAIL=""
+
+getoptsGetOptionalArgument() {
+    eval next_token=\${$OPTIND}
+    if [[ -n "$next_token" && "$next_token" != -* ]]; then
+        OPTIND=$((OPTIND + 1))
+        OPTARG=$next_token
+    else
+        OPTARG=""
+    fi
+}
 
 SHORTOPTS=":vVi:sp:Shr:C:Dz:"
 
@@ -118,7 +129,9 @@ while getopts "${SHORTOPTS}" OPTION; do
             NO_OF_PARALLEL_JOBS="$OPTARG"
             ;;
         S)
+            getoptsGetOptionalArgument "$@"
             SHARE=true
+            SHARE_EMAIL=${OPTARG}
             ;;
         v)
             VERBOSE=true
@@ -179,6 +192,14 @@ fi
 if ! curl -Is --write-out "%{http_code}" --output /dev/null "google.com" > /dev/null 2>&1; then
     printf '\nError: Internet connection not available.\n\n'
     exit 1
+fi
+
+if [ -n "$SHARE_EMAIL" ]; then
+    EMAIL_REGEX="^([A-Za-z]+[A-Za-z0-9]*\+?((\.|\-|\_)?[A-Za-z]+[A-Za-z0-9]*)*)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
+    if ! [[ "$SHARE_EMAIL" =~ ${EMAIL_REGEX} ]]; then
+        echo -e "\nError: Provided email address for share option is invalid."
+        exit 0
+    fi
 fi
 
 if [ -n "$DEBUG" ]; then
@@ -325,7 +346,7 @@ driveInfo() {
         "https://www.googleapis.com/drive/v3/files/""$FOLDER_ID""?fields=""$FETCH""")"
     local FETCHED_DATA
     FETCHED_DATA="$(echo "$SEARCH_RESPONSE" | jsonValue "$FETCH" 1)"
-    if [ -z $FETCHED_DATA ]; then
+    if [ -z "$FETCHED_DATA" ]; then
         echo "$(echo "$SEARCH_RESPONSE" | jsonValue message 1)"
         return 1
 
@@ -495,25 +516,35 @@ uploadFile() {
 # Method to share a gdrive file/folder
 # Requirements: Given file/folder ID, type, role and access_token.
 shareID() {
-    local ID
+    local ID ROLE TYPE ACCESS_TOKEN SHARE_POST_DATA SHARE_EMAIL SHARE_RESPONSE SHARE_ID
     ID="$1"
-    local ROLE
-    ROLE="reader"
-    local TYPE
-    TYPE="anyone"
-    local ACCESS_TOKEN
     ACCESS_TOKEN="$2"
-    local SHARE_POST_DATA
-    SHARE_POST_DATA="{\"role\":\"$ROLE\",\"type\":\"$TYPE\"}"
+    SHARE_EMAIL="$3"
+    ROLE="reader"
+    if [[ -n $SHARE_EMAIL ]]; then
+        TYPE="user"
+        SHARE_POST_DATA="{\"role\":\"$ROLE\",\"type\":\"$TYPE\",\"emailAddress\":\"$SHARE_EMAIL\"}"
+    else
+        TYPE="anyone"
+        SHARE_POST_DATA="{\"role\":\"$ROLE\",\"type\":\"$TYPE\"}"
 
-    curl \
+    fi
+
+    SHARE_RESPONSE="$(curl \
         --silent \
-        --output /dev/null \
         -X POST \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" \
         -H "Content-Type: application/json; charset=UTF-8" \
         -d "$SHARE_POST_DATA" \
-        "https://www.googleapis.com/drive/v3/files/""$ID""/permissions"
+        "https://www.googleapis.com/drive/v3/files/""$ID""/permissions")"
+
+    SHARE_ID="$(echo "$SHARE_RESPONSE" | jsonValue id 1)"
+    if [ -z "$SHARE_ID" ]; then
+        echo "$(echo "$SHARE_RESPONSE" | jsonValue message 1)"
+        return 1
+    else
+        echo "$SHARE_ID"
+    fi
 }
 
 printCenter "[ Checking credentials... ]" "="
@@ -640,8 +671,15 @@ if [ -n "$INPUT" ]; then
         printCenter "[ Given Input: FILE ]" "="
         echo
         uploadFile "$INPUT" "$ROOT_FOLDER_ID" "$ACCESS_TOKEN"
-        [ -n "$SHARE" ] && printCenter "[ Making File Public..]" "=" && shareID "$FILE_ID" "$ACCESS_TOKEN" && clearLine 1
-        printCenter "[ DriveLink ]" "="
+        if [ -n "$SHARE" ]; then
+            clearLine 1
+            printCenter "[ Sharing the file..]" "="
+            SHARE_MSG="$(shareID "$FILE_ID" "$ACCESS_TOKEN" "$SHARE_EMAIL")" || {
+                printCenter "[ $SHARE_MSG ]" "="
+            }
+
+        fi
+        printCenter "[ Drive Link ]" "="
         printCenter "$(echo -e "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93")"
         printCenter "$FILE_LINK"
         echo
@@ -795,8 +833,14 @@ if [ -n "$INPUT" ]; then
             clearLine 1
         fi
         if ! [ "$SUCESS_STATUS" = 0 ]; then
-            [ -n "$SHARE" ] && printCenter "[ Making Folder Public..]" "=" && shareID "$(head -n1 "$STRING"DIRIDS | awk '{print $1;}')" "$ACCESS_TOKEN" && clearLine 1
-            printCenter "[ FolderLink ]" "="
+            if [ -n "$SHARE" ]; then
+                clearLine 1
+                printCenter "[ Sharing the file..]" "="
+                SHARE_MSG="$(shareID "$(head -n1 "$STRING"DIRIDS | awk '{print $1;}')" "$ACCESS_TOKEN" "$SHARE_EMAIL")" || {
+                    printCenter "[ $SHARE_MSG ]" "="
+                }
+            fi
+            printCenter "[ Folder Link ]" "="
             printCenter "$(echo -e "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93")"
             printCenter "$(head -n1 "$STRING"DIRIDS | awk '{print $1;}' | sed -e 's|^|https://drive.google.com/open?id=|')"
         fi

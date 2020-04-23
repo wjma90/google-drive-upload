@@ -64,13 +64,13 @@ Other Options available are
     -r | --root-dir <google_folderid> - google folder id to which the file/directory to upload.
     -s | --skip-subdirs - Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.
     -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, only works along with --skip-subdirs/-s option, Max value = 10, low value are recommended.
-    -S | --share - Share the uploaded input file/folder, grant reader permission to the everyone with the link.
+    -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.
     -v | --verbose - Display detailed message.
     -V | --verbose-progress - Display detailed message and detailed upload progress( curl normal progress info ).
-    -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename."
+    -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.
     -h | --help - Display usage instructions.
     -z | --config - Override default config file with custom config file.
-    -D | --debug - Display script command trace."
+    -D | --debug - Display script command trace.
 
 To create a folder:
 
@@ -92,6 +92,6 @@ The script also allows to upload directories. If directory path is provided as a
 
 MIT
 
-[github-bashutils]: <https://github.com/soulseekah/bash-utils>
+[github-bashutils]:<https://github.com/soulseekah/bash-utils>
 [deanet-gist]:<https://gist.github.com/deanet/3427090>
 [google console]:<https://console.developers.google.com>
