@@ -92,6 +92,7 @@ NO_OF_PARALLEL_JOBS=""
 SHARE=""
 SHARE_EMAIL=""
 
+# https://stackoverflow.com/a/57295993
 getoptsGetOptionalArgument() {
     eval next_token=\${$OPTIND}
     if [[ -n "$next_token" && "$next_token" != -* ]]; then
