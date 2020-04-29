@@ -377,7 +377,7 @@ createDirectory() {
         --silent \
         -XGET \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-        "https://www.googleapis.com/drive/v3/files?q=${QUERY}&fields=files(id)")"
+        "https://www.googleapis.com/drive/v3/files?q=${QUERY}&fields=files(id)&supportsAllDrives=true")"
     local FOLDER_ID
     FOLDER_ID="$(echo "$SEARCH_RESPONSE" | jsonValue id 1)"
     if [ -z "$FOLDER_ID" ]; then
@@ -390,7 +390,7 @@ createDirectory() {
             -H "Authorization: Bearer ${ACCESS_TOKEN}" \
             -H "Content-Type: application/json; charset=UTF-8" \
             -d "$CREATE_FOLDER_POST_DATA" \
-            "https://www.googleapis.com/drive/v3/files?fields=id")"
+            "https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true")"
         FOLDER_ID="$(echo "$CREATE_FOLDER_RESPONSE" | jsonValue id)"
     fi
     echo "$FOLDER_ID"
