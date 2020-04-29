@@ -344,7 +344,7 @@ driveInfo() {
         --silent \
         -XGET \
         -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-        "https://www.googleapis.com/drive/v3/files/""$FOLDER_ID""?fields=""$FETCH""")"
+        "https://www.googleapis.com/drive/v3/files/""$FOLDER_ID""?fields=""$FETCH""&supportsAllDrives=true")"
     local FETCHED_DATA
     FETCHED_DATA="$(echo "$SEARCH_RESPONSE" | jsonValue "$FETCH" 1)"
     if [ -z "$FETCHED_DATA" ]; then
