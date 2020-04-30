@@ -336,6 +336,7 @@ uploadFile() {
             -T "$INPUT" \
             -o- \
             --url "$UPLOADLINK" \
+            --globoff \
             $CURL_ARGS)"
 
         FILE_LINK="$(: "$(printf "%s\n" "$UPLOAD_BODY" | jsonValue id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
