@@ -18,6 +18,7 @@ Options:\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
   -z | --config <config_path> - Override default config file with custom config file.\n
+  -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
   -D | --debug - Display script command trace.\n
@@ -38,6 +39,11 @@ checkBashVersion() {
 # Check if we are running in a terminal.
 isTerminal() {
     [[ -t 1 || -z $TERM ]] && return 0 || return 1
+}
+
+# Check for -q/--quiet
+isNotQuiet() {
+    [[ -z $QUIET ]] && return 0 || return 1
 }
 
 # Usage: bashSleep 1 ( where is time in seconds )
@@ -66,13 +72,13 @@ printCenter() {
             if [[ $# = 3 ]]; then
                 declare input1="$2" symbol="$3" TO_PRINT out
                 TO_PRINT="$((TERM_COLS * 93 / 100))"
-                { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}.. ]" ;} || { out="[ $input1 ]" ;}
+                { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}.. ]"; } || { out="[ $input1 ]"; }
             else
                 declare input1="$2" input2="$3" symbol="$4" TO_PRINT temp out
                 TO_PRINT="$((TERM_COLS * 40 / 100))"
-                { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.." ;} ||  {  temp+=" $input1" ;}
+                { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.."; } || { temp+=" $input1"; }
                 TO_PRINT="$((TERM_COLS * 53 / 100))"
-                { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. " ;} ||  { temp+="$input2 " ;}
+                { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. "; } || { temp+="$input2 "; }
                 out="[$temp]"
             fi
             ;;
@@ -355,13 +361,25 @@ uploadFile() {
         fi
 
         if [[ -n $VERBOSE_PROGRESS ]]; then
-            printCenter "justify" "$SLUG" "| $READABLE_SIZE | $STRING" "="
+            if isNotQuiet; then
+                printCenter "justify" "$SLUG " "| $READABLE_SIZE | $STRING" "="
+            else
+                printCenterQuiet "[ $SLUG | $READABLE_SIZE | $STRING ]"
+            fi
         else
-            [[ -z "$PARALLEL" ]] && for _ in {1..3}; do clearLine 1; done
-            printCenter "justify" "$SLUG" "| $READABLE_SIZE | $STRING" "="
+            if isNotQuiet; then
+                [[ -z "$PARALLEL" ]] && for _ in {1..3}; do clearLine 1; done
+                printCenter "justify" "$SLUG " "| $READABLE_SIZE | $STRING" "="
+            else
+                printCenterQuiet "[ $SLUG | $READABLE_SIZE | $STRING ]"
+            fi
         fi
     else
-        printCenter "justify" "Upload link generation ERROR" ", $SLUG not $STRING." "=" 1>&2 && [[ -z "$PARALLEL" ]] && printf "\n\n\n"
+        if isNotQuiet; then
+            printCenter "justify" "Upload link generation ERROR" ", $SLUG not $STRING." "=" 1>&2 && [[ -z "$PARALLEL" ]] && printf "\n\n\n"
+        else
+            printCenterQuiet "Upload link generation ERROR, $SLUG not $STRING." 1>&2
+        fi
         UPLOAD_STATUS=ERROR && export UPLOAD_STATUS # Send a error status, used in folder uploads.
     fi
 }
@@ -400,7 +418,7 @@ setupArguments() {
     # Internal variables
     # De-initialize if any variables set already.
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_INPUT_ARRAY INPUT_ARRAY
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_SUBDIRS CONFIG ROOTDIR
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_SUBDIRS CONFIG ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
     CURL_ARGS="-#"
 
@@ -415,7 +433,7 @@ setupArguments() {
     REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-    SHORTOPTS=":vVi:sp:of:Shr:C:Dz:-:"
+    SHORTOPTS=":qvVi:sp:of:Shr:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
         case "$OPTION" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
@@ -473,6 +491,10 @@ setupArguments() {
                             SHARE_EMAIL="${!OPTIND}" && ! [[ $SHARE_EMAIL =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
                             OPTIND=$((OPTIND + 1))
                         fi
+                        ;;
+                    quiet)
+                        QUIET=true
+                        CURL_ARGS="-s"
                         ;;
                     verbose)
                         VERBOSE=true
@@ -541,6 +563,10 @@ setupArguments() {
                 fi
                 SHARE=true
                 ;;
+            q)
+                QUIET=true
+                CURL_ARGS="-s"
+                ;;
             v)
                 VERBOSE=true
                 ;;
@@ -572,10 +598,10 @@ setupArguments() {
         fi
     else
         for array in "${INPUT_ARRAY[@]}"; do
-            { [[ -f $array || -d $array ]] && FINAL_INPUT_ARRAY+=("${array[@]}") ;} || {
+            { [[ -f $array || -d $array ]] && FINAL_INPUT_ARRAY+=("${array[@]}"); } || {
                 printf "\nError: Invalid Input ( %s ), no such file or directory.\n\n" "$array"
                 exit 1
-                }
+            }
         done
     fi
     mapfile -t FINAL_INPUT_ARRAY <<< "$(removeArrayDuplicates "${FINAL_INPUT_ARRAY[@]}")"
@@ -588,33 +614,29 @@ setupArguments() {
 
 # To avoid spamming in debug mode.
 checkDebug() {
+    printCenterQuiet() { printf "%s\n" "$1"; }
     if [[ -n $DEBUG ]]; then
         set -x
-        printCenter() {
-             { [[ $# = 3 ]] && printf "%s\n" "$2" ;} || { printf "%s%s\n" "$2" "$3" ;}
-        }
-        clearLine() {
-            :
-        }
+        printCenter() { { [[ $# = 3 ]] && printf "%s\n" "$2"; } || { printf "%s%s\n" "$2" "$3"; }; }
+        clearLine() { :; } && newLine() { :; }
     else
         set +x
-        if isTerminal; then
-            # This refreshes the interactive shell so we can use the $COLUMNS variable in the printCenter function.
-            shopt -s checkwinsize && (: && :)
-            if [[ $COLUMNS -lt 40 ]]; then
-                printCenter() {
-                { [[ $# = 3 ]] && printf "%s\n" "[ $2 ]" ;} || { printf "%s\n" "[ $2 $3 ]" ;}
-            }
+        if isNotQuiet; then
+            if isTerminal; then
+                # This refreshes the interactive shell so we can use the $COLUMNS variable in the printCenter function.
+                shopt -s checkwinsize && (: && :)
+                if [[ $COLUMNS -lt 40 ]]; then
+                    printCenter() { { [[ $# = 3 ]] && printf "%s\n" "[ $2 ]"; } || { printf "%s\n" "[ $2$3 ]"; }; }
+                else
+                    trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
+                fi
             else
-                trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
+                printCenter() { { [[ $# = 3 ]] && printf "%s\n" "[ $2 ]"; } || { printf "%s\n" "[ $2$3 ]"; }; }
+                clearLine() { :; }
             fi
+            newLine() { printf "%b" "$1"; }
         else
-            printCenter() {
-                { [[ $# = 3 ]] && printf "%s\n" "[ $2 ]" ;} || { printf "%s\n" "[ $2 $3 ]" ;}
-            }
-            clearLine() {
-                :
-            }
+            printCenter() { :; } && clearLine() { :; } && newLine() { :; }
         fi
     fi
 }
@@ -631,7 +653,7 @@ checkInternet() {
         CHECK_INTERNET="$(curl --compressed -Is google.com -m 10)"
     fi
     if [[ -z $CHECK_INTERNET ]]; then
-        clearLine 1 && printf "\n" && printCenter "justify" "Error: Internet connection not available" "=" && printf "\n"
+        clearLine 1 && newLine "\n" && printCenter "justify" "Error: Internet connection not available" "=" && newLine "\n"
         exit 1
     else
         clearLine 1
@@ -751,67 +773,73 @@ setupWorkspace() {
 # Loop through all the input.
 processArguments() {
     for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
-        # Do this because if no files are present in folder, then loop will exit and thus the whole script , but we want rest values to be processed.
-        for ((i = 0; i < "${#FINAL_INPUT_ARRAY[@]}"; i++)); do
-            # Check if the argument is a file or a directory.
-            if [[ -f $INPUT ]]; then
-                printCenter "justify" "Given Input" ": FILE" "="
-                if [[ -n $OVERWRITE ]]; then
-                    printCenter "justify" "Upload Method" ": Overwrite" "-" && printf "\n"
-                    uploadFile update "$INPUT" "$WORKSPACE_FOLDER_ID" "$ACCESS_TOKEN"
+        # Check if the argument is a file or a directory.
+        if [[ -f $INPUT ]]; then
+            printCenter "justify" "Given Input" ": FILE" "="
+            if [[ -n $OVERWRITE ]]; then
+                printCenter "justify" "Upload Method" ": Overwrite" "-" && newLine "\n"
+                uploadFile update "$INPUT" "$WORKSPACE_FOLDER_ID" "$ACCESS_TOKEN"
+            else
+                printCenter "justify" "Upload Method" ": Create" "-" && newLine "\n"
+                uploadFile create "$INPUT" "$WORKSPACE_FOLDER_ID" "$ACCESS_TOKEN"
+            fi
+            [[ $UPLOAD_STATUS = ERROR ]] && for _ in {1..2}; do clearLine 1; done && return 1
+            if [[ -n "$SHARE" ]]; then
+                printCenter "justify" "Sharing the file.." "-"
+                if SHARE_MSG="$(shareID "$FILE_ID" "$ACCESS_TOKEN" "$SHARE_EMAIL")"; then
+                    printf "%s\n" "$SHARE_MSG"
                 else
-                    printCenter "justify" "Upload Method" ": Create" "-" && printf "\n"
-                    uploadFile create "$INPUT" "$WORKSPACE_FOLDER_ID" "$ACCESS_TOKEN"
+                    clearLine 1
                 fi
-                [[ $UPLOAD_STATUS = ERROR ]] && for _ in {1..2}; do clearLine 1; done && return 1
-                if [[ -n "$SHARE" ]]; then
-                    printCenter "justify" "Sharing the file.." "-"
-                    if SHARE_MSG="$(shareID "$FILE_ID" "$ACCESS_TOKEN" "$SHARE_EMAIL")"; then
-                        printf "%s\n" "$SHARE_MSG"
-                    else
-                        clearLine 1
-                    fi
-                    printCenter "justify" "DriveLink" " (SHARED)" "-"
-                else
-                    printCenter "justify" "DriveLink" "-"
-                fi
-                isTerminal && printCenter "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                printCenter "normal" "$FILE_LINK" " " && printf "\n"
-            elif [[ -d $INPUT ]]; then
-                # Unset PARALLEL value if input is file, for preserving the logging output.
-                [[ -n $PARALLEL_UPLOAD ]] && { parallel=true || unset parallel; }
+                printCenter "justify" "DriveLink" " (SHARED)" "-"
+            else
+                printCenter "justify" "DriveLink" "-"
+            fi
+            isTerminal && printCenter "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
+            printCenter "normal" "$FILE_LINK" " "
+            printf "\n"
+        elif [[ -d $INPUT ]]; then
+            # Unset PARALLEL value if input is file, for preserving the logging output.
+            [[ -n $PARALLEL_UPLOAD ]] && { parallel=true || unset parallel; }
 
-                FOLDER_NAME="${INPUT##*/}"
-                if [[ -n $OVERWRITE ]]; then
-                    printCenter "justify" "Upload Method" ": Overwrite" "="
-                else
-                    printCenter "justify" "Upload Method" ": Create" "="
-                fi
-                printCenter "justify" "Given Input" ": FOLDER" "-" && printf "\n"
-                printCenter "justify" "Folder: $FOLDER_NAME" "="
-                NEXTROOTDIRID="$WORKSPACE_FOLDER_ID"
+            FOLDER_NAME="${INPUT##*/}"
 
-                # Skip the sub folders and find recursively all the files and upload them.
-                if [[ -n $SKIP_SUBDIRS ]]; then
-                    printCenter "justify" "Indexing files recursively.." "-"
-                    FILENAMES="$(find "$INPUT" -type f)"
-                    [[ -z $FILENAMES ]] && clearLine 1 && printCenter "justify" "No files inside the folder.." "=" && break # Check in case of zero files.
-                    NO_OF_FILES="$(count <<< "$FILENAMES")"
-                    for _ in {1..2}; do clearLine 1; done
+            if [[ -n $OVERWRITE ]]; then
+                printCenter "justify" "Upload Method" ": Overwrite" "="
+            else
+                printCenter "justify" "Upload Method" ": Create" "="
+            fi
+
+            printCenter "justify" "Given Input" ": FOLDER" "-" && newLine "\n"
+            printCenter "justify" "Folder: $FOLDER_NAME" "="
+
+            NEXTROOTDIRID="$WORKSPACE_FOLDER_ID"
+
+            # Skip the sub folders and find recursively all the files and upload them.
+            if [[ -n $SKIP_SUBDIRS ]]; then
+                printCenter "justify" "Indexing files recursively.." "-"
+                FILENAMES="$(find "$INPUT" -type f)"
+                [[ -z $FILENAMES ]] && clearLine 1 && printCenter "justify" "No files inside the folder.." "=" && break # Check in case of zero files.
+                NO_OF_FILES="$(count <<< "$FILENAMES")"
+                for _ in {1..2}; do clearLine 1; done
+                if isNotQuiet; then
                     printCenter "justify" "Folder: $FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "=" && printf "\n"
-                    ID="$(createDirectory "$INPUT" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
-                    DIRIDS="$ID"
-                    if [[ -n $parallel ]]; then
-                        { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES" ;} || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS" ;}
-                        # Export because xargs cannot access if it is just an internal variable.
-                        export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
-                        export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile
+                else
+                    printCenterQuiet "[ Folder: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]"
+                fi
+                ID="$(createDirectory "$INPUT" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
+                DIRIDS="$ID"
+                if [[ -n $parallel ]]; then
+                    { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
+                    # Export because xargs cannot access if it is just an internal variable.
+                    export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
+                    export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet
 
-                        [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
-                        [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
+                    [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
+                    [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
 
-                        # shellcheck disable=SC2016
-                        printf "%s\n" "$FILENAMES" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
+                    # shellcheck disable=SC2016
+                    printf "%s\n" "$FILENAMES" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
             if [[ -n $OVERWRITE ]]; then
         uploadFile update "{}" "$ID" "$ACCESS_TOKEN" parallel
             else
@@ -819,65 +847,80 @@ processArguments() {
             fi
             ' 1>| "$TMPFILE"SUCCESS 2>| "$TMPFILE"ERROR &
 
-                        while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
-                        printf "\n"
-                        ERROR_STATUS=0 SUCCESS_STATUS=0
-                        while true; do
-                            SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
-                            ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
-                            bashSleep 1
+                    while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
+                    newLine "\n"
+                    ERROR_STATUS=0 SUCCESS_STATUS=0
+                    while true; do
+                        SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
+                        ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
+                        bashSleep 1
+                        if isNotQuiet; then
                             if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
                                 clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
                             fi
-                            TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                            [[ $TOTAL = "$NO_OF_FILES" ]] && clearLine 1 && break
-                        done
-                        clearLine 1
-                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && printf "\n\n"
-                    else
-                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && printf "\n"
-                        
-                        ERROR_STATUS=0 SUCCESS_STATUS=0
-                        while IFS= read -r -u 4 file; do
-                            DIRTOUPLOAD="$ID"
-                            if [[ -n $OVERWRITE ]]; then
-                                uploadFile update "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
-                            else
-                                uploadFile create "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                        else
+                            if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
+                                clearLine 1 && printCenterQuiet "Status: ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED"
                             fi
-                            [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
-                            if [[ $VERBOSE = true || $VERBOSE_PROGRESS = true ]]; then
-                                printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "=" && printf "\n"
-                            else
-                                for _ in {1..2}; do clearLine 1; done
-                                printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "="
-                            fi
-                        done 4<<< "$FILENAMES"
-                    fi
+                        fi
+                        TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
+                        [[ $TOTAL = "$NO_OF_FILES" ]] && break
+                    done
+                    for _ in {1..2}; do clearLine 1; done
+                    [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n\n"
                 else
-                    printCenter "justify" "Indexing files/sub-folders" " recursively.." "-"
-                    # Do not create empty folders during a recursive upload. Use of find in this section is important.
-                    # If below command is used, it lists the folder in stair structure, which we later assume while creating sub folders( if applicable ) and uploading files.
-                    DIRNAMES="$(find "$INPUT" -type d -not -empty)"
-                    NO_OF_SUB_FOLDERS="$(printf "%s" "$DIRNAMES" | count)"
-                    # Create a loop and make folders according to list made above.
-                    if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                        clearLine 1
-                        printCenter "justify" """$NO_OF_SUB_FOLDERS"" Sub-folders found" "="
-                    fi
-                    printCenter "justify" "Indexing files.." "="
-                    FILENAMES="$(find "$INPUT" -type f)"
-                    [[ -z $FILENAMES ]] && clearLine 1 && printCenter "justify" "No files inside the folder.." "=" && printf '\n\n' && break # Check in case of zero files.
+                    [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n"
+
+                    ERROR_STATUS=0 SUCCESS_STATUS=0
+                    while IFS= read -r -u 4 file; do
+                        DIRTOUPLOAD="$ID"
+                        if [[ -n $OVERWRITE ]]; then
+                            uploadFile update "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                        else
+                            uploadFile create "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                        fi
+                        [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
+                        if [[ $VERBOSE = true || $VERBOSE_PROGRESS = true ]]; then
+                            printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "=" && newLine "\n"
+                        else
+                            for _ in {1..2}; do clearLine 1; done
+                            printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "="
+
+                        fi
+                    done 4<<< "$FILENAMES"
+                fi
+            else
+                printCenter "justify" "Indexing files/sub-folders" " recursively.." "-"
+                # Do not create empty folders during a recursive upload. Use of find in this section is important.
+                # If below command is used, it lists the folder in stair structure, which we later assume while creating sub folders( if applicable ) and uploading files.
+                DIRNAMES="$(find "$INPUT" -type d -not -empty)"
+                NO_OF_SUB_FOLDERS="$(printf "%s" "$DIRNAMES" | count)"
+                # Create a loop and make folders according to list made above.
+                if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
+                    clearLine 1
+                    printCenter "justify" """$NO_OF_SUB_FOLDERS"" Sub-folders found" "="
+                fi
+                printCenter "justify" "Indexing files.." "="
+                FILENAMES="$(find "$INPUT" -type f)"
+                if [[ -n $FILENAMES ]]; then
                     NO_OF_FILES="$(count <<< "$FILENAMES")"
                     for _ in {1..3}; do clearLine 1; done
-                    if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                        printCenter "justify" "$FOLDER_NAME " "| ""$NO_OF_FILES"" File(s) | ""$NO_OF_SUB_FOLDERS"" Sub-folders" "="
+                    if isNotQuiet; then
+                        if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
+                            printCenter "justify" "$FOLDER_NAME " "| ""$NO_OF_FILES"" File(s) | ""$NO_OF_SUB_FOLDERS"" Sub-folders" "="
+                        else
+                            printCenter "justify" "$FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "="
+                        fi
                     else
-                        printCenter "justify" "$FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "="
+                        if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
+                            printCenterQuiet "[ $FOLDER_NAME | ""$NO_OF_FILES"" File(s) | ""$NO_OF_SUB_FOLDERS"" Sub-folders ]"
+                        else
+                            printCenterQuiet "[ $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]"
+                        fi
                     fi
-                    printf "\n"
+                    newLine "\n"
                     if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                        printCenter "justify" "Creating sub-folders.." "-" && printf "\n"
+                        printCenter "justify" "Creating sub-folders.." "-" && newLine "\n"
                     else
                         printCenter "justify" "Creating folder.." "-"
                     fi
@@ -895,14 +938,12 @@ processArguments() {
                             printCenter "justify" "Status" ": ""$status"" / ""$NO_OF_SUB_FOLDERS""" "=" 1>&2
                         fi
                     done 4<<< "$DIRNAMES")"
-
                     if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
                         for _ in {1..2}; do clearLine 1; done
                     else
                         clearLine 1
                     fi
                     printCenter "justify" "Preparing to upload.." "-"
-
                     # shellcheck disable=SC2001
                     FILES_ROOTDIR="$(while IFS= read -r -u 4 i; do
                         : "${i##*/}" && : "$((${#_} + 1))" && printf "%s\n" "${i::-$_}"
@@ -914,10 +955,10 @@ processArguments() {
                     done 4<<< "$FILES_ROOTDIR" 5<<< "$FILENAMES")"
 
                     if [[ -n $parallel ]]; then
-                        { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES" ;} || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS" ;}
+                        { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export CURL_ARGS="-s" ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
-                        export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile
+                        export CURL_ARGS="-s" ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID QUIET
+                        export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet printCenterQuiet newLine
 
                         [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
                         [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
@@ -936,21 +977,28 @@ processArguments() {
 
                         while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
 
-                        clearLine 1 && printf "\n"
+                        clearLine 1 && newLine "\n"
                         while true; do
                             SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
                             ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
                             bashSleep 1
-                            if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                            if isNotQuiet; then
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
+                                    clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                                fi
+                            else
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
+                                    clearLine 1 && printCenterQuiet "Status: ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED"
+                                fi
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                            [[ $TOTAL = "$NO_OF_FILES" ]] && clearLine 1 && break
+                            [[ $TOTAL = "$NO_OF_FILES" ]] && break
                         done
+                        clearLine 1
 
-                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && printf "\n"
+                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n"
                     else
-                        clearLine 1 && printf "\n"
+                        clearLine 1 && newLine "\n"
                         ERROR_STATUS=0 SUCCESS_STATUS=0
                         while IFS= read -r -u 4 LIST; do
                             FILETOUPLOAD="${LIST//*"|:_//_:|"/}"
@@ -962,15 +1010,18 @@ processArguments() {
                             fi
                             [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
                             if [[ -n $VERBOSE || -n $VERBOSE_PROGRESS ]]; then
-                                printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "=" && printf "\n"
+                                printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "=" && newLine "\n"
                             else
                                 for _ in {1..2}; do clearLine 1; done
                                 printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
                             fi
                         done 4<<< "$FINAL_LIST"
                     fi
+                else
+                    EMPTY=1
                 fi
-
+            fi
+            if [[ $EMPTY != 1 ]]; then
                 [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && for _ in {1..2}; do clearLine 1; done
 
                 if [[ $SUCCESS_STATUS -gt 0 ]]; then
@@ -988,12 +1039,25 @@ processArguments() {
                     isTerminal && printCenter "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
                     printCenter "normal" "$(: "$(read -r firstline <<< "$DIRIDS" && printf "%s\n" "${firstline%% *}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
                 fi
+                newLine "\n"
+                if isNotQuiet; then
+                    [[ $SUCCESS_STATUS -gt 0 ]] && printCenter "justify" "Total Files " "Uploaded: ""$SUCCESS_STATUS""" "="
+                    [[ $ERROR_STATUS -gt 0 ]] && printCenter "justify" "Total Files " "Failed: ""$ERROR_STATUS""" "="
+                else
+                    [[ $SUCCESS_STATUS -gt 0 ]] && printCenterQuiet "[ Total Files Uploaded: ""$SUCCESS_STATUS"" ]"
+                    [[ $ERROR_STATUS -gt 0 ]] && printCenterAuiet "[ Total Files Failed: ""$ERROR_STATUS"" ]"
+                fi
                 printf "\n"
-                [[ $SUCCESS_STATUS -gt 0 ]] && printCenter "justify" "Total Files " "Uploaded: ""$SUCCESS_STATUS""" "="
-                [[ $ERROR_STATUS -gt 0 ]] && printCenter "justify" "Total Files " "Failed: ""$ERROR_STATUS""" "="
+            else
+                if isNotQuiet; then
+                    for _ in {1..2}; do clearLine 1; done
+                    printCenter 'justify' "Empty Folder" "-"
+                else
+                    printCenterQuiet "Empty Folder\n"
+                fi
                 printf "\n"
             fi
-        done
+        fi
     done
 }
 
@@ -1024,13 +1088,17 @@ main() {
     printCenter "justify" "Checking Workspace Folder.." "-"
     setupWorkspace && for _ in {1..2}; do clearLine 1; done
     printCenter "justify" "Workspace Folder: ""$WORKSPACE_FOLDER_NAME""" "="
-    printCenter "normal" " $WORKSPACE_FOLDER_ID " "-" && printf "\n"
+    printCenter "normal" " $WORKSPACE_FOLDER_ID " "-" && newLine "\n"
 
     processArguments
 
     END="$(printf "%(%s)T\\n" "-1")"
     DIFF="$((END - START))"
+    if isNotQuiet; then
     printCenter "normal" " Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds " "="
+    else
+    printCenterQuiet "Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds"
+    fi
 }
 
 main "$@"

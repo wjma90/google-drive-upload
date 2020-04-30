@@ -91,6 +91,8 @@ Other Options available are
                             
     -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.
     
+    -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.
+    
     -v | --verbose - Display detailed message (only for non-parallel uploads).
     
     -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).
