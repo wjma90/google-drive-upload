@@ -191,7 +191,7 @@ driveInfo() {
         --silent \
         -XGET \
         -H "Authorization: Bearer ${TOKEN}" \
-        """$API_URL""/drive/""$API_VERSION""/files/""$FOLDER_ID""?fields=""$FETCH""")"
+        """$API_URL""/drive/""$API_VERSION""/files/""$FOLDER_ID""?fields=""$FETCH""&supportsAllDrives=true")"
 
     FETCHED_DATA="$(jsonValue "$FETCH" 1 <<< "$SEARCH_RESPONSE")"
     { [[ -z $FETCHED_DATA ]] && jsonValue message 1 <<< "$SEARCH_RESPONSE" && return 1; } || {
@@ -233,7 +233,7 @@ createDirectory() {
         --silent \
         -XGET \
         -H "Authorization: Bearer ${TOKEN}" \
-        """$API_URL""/drive/""$API_VERSION""/files?q=${QUERY}&fields=files(id)")"
+        """$API_URL""/drive/""$API_VERSION""/files?q=${QUERY}&fields=files(id)&supportsAllDrives=true")"
 
     FOLDER_ID="$(printf "%s\n" "$SEARCH_RESPONSE" | jsonValue id 1)"
 
@@ -247,7 +247,7 @@ createDirectory() {
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json; charset=UTF-8" \
             -d "$CREATE_FOLDER_POST_DATA" \
-            """$API_URL""/drive/""$API_VERSION""/files?fields=id")"
+            """$API_URL""/drive/""$API_VERSION""/files?fields=id&supportsAllDrives=true")"
         FOLDER_ID="$(jsonValue id <<< "$CREATE_FOLDER_RESPONSE")"
     fi
     printf "%s\n" "$FOLDER_ID"
