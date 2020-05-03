@@ -178,6 +178,8 @@ Other Options available are
     
     -u | --update - Update the installed script in your system, if not installed, then install.
     
+    --info - Show detailed info, only if script is installed system wide.
+    
     -h | --help - Display usage instructions.
     
     -z | --config - Override default config file with custom config file.

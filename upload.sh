@@ -22,6 +22,7 @@ Options:\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
   -u | --update - Update the installed script in your system.\n
+  --info - Show detailed info, only if script is installed system wide.\n
   -D | --debug - Display script command trace.\n
   -h | --help - Display usage instructions.\n\n" "${0##*/}"
     exit 0
@@ -70,6 +71,16 @@ update() {
         bash <<< "$__SCRIPT"
     else
         printf "Error: Cannot download update script..\n"
+    fi
+}
+
+# Just print the "$HOME/.google-drive-upload/google-drive-upload.info"
+versionInfo() {
+    # shellcheck source=/dev/null
+    if [[ -f "$HOME/.google-drive-upload/google-drive-upload.info" ]]; then
+        cat "$HOME/.google-drive-upload/google-drive-upload.info"
+    else
+        printf "google-drive-upload is not installed system wide.\n"
     fi
 }
 
@@ -461,6 +472,10 @@ setupArguments() {
                         ;;
                     update)
                         update
+                        exit $?
+                        ;;
+                    info)
+                        versionInfo
                         exit $?
                         ;;
                     create-dir)
