@@ -21,8 +21,9 @@ Options:\n
   -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
+  -u | --update - Update the installed script in your system.\n
   -D | --debug - Display script command trace.\n
-  -h | --help - Display usage instructions.\n\n" "$0"
+  -h | --help - Display usage instructions.\n\n" "${0##*/}"
     exit 0
 }
 
@@ -55,6 +56,21 @@ bashSleep() {
 # Move cursor to nth no. of line and clear it to the begining.
 clearLine() {
     printf "\033[%sA\033[2K" "$1"
+}
+
+# Update the script
+update() {
+    printf 'Fetching update script..\n'
+    declare REPO="labbots/google-drive-upload" BRANCH="master"
+    # shellcheck source=/dev/null
+    if [[ -f "$HOME/.google-drive-upload/google-drive-upload.info" ]]; then
+        source "$HOME/.google-drive-upload/google-drive-upload.info"
+    fi
+    if __SCRIPT="$(curl --compressed -s https://raw.githubusercontent.com/"$REPO"/"$BRANCH"/install.sh)"; then
+        bash <<< "$__SCRIPT"
+    else
+        printf "Error: Cannot download update script..\n"
+    fi
 }
 
 # Print a text to center interactively and fill the rest of the line with text specified.
@@ -140,7 +156,7 @@ updateConfig() {
     printf "" >> "$CONFIG_PATH" # If config file doesn't exist.
     mapfile -t VALUES < "$CONFIG_PATH" && VALUES+=("$VALUE_NAME=$VALUE")
     for i in "${VALUES[@]}"; do
-        [[ $i =~ $VALUE_NAME\= ]] && FINAL+=("$VALUE_NAME=$VALUE") || FINAL+=("$i")
+        [[ $i =~ $VALUE_NAME\= ]] && FINAL+=("$VALUE_NAME=\"$VALUE\"") || FINAL+=("$i")
     done
     for i in "${FINAL[@]}"; do
         [[ ${Aseen[$i]} ]] && continue
@@ -433,7 +449,7 @@ setupArguments() {
     REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-    SHORTOPTS=":qvVi:sp:of:Shr:C:Dz:-:"
+    SHORTOPTS=":qvVi:sp:of:Shur:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
         case "$OPTION" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
@@ -442,6 +458,10 @@ setupArguments() {
                 case "$OPTARG" in
                     help)
                         usage
+                        ;;
+                    update)
+                        update
+                        exit $?
                         ;;
                     create-dir)
                         checkLongoptions
@@ -516,6 +536,10 @@ setupArguments() {
                 ;;
             h)
                 usage
+                ;;
+            u)
+                update
+                exit $?
                 ;;
             C)
                 FOLDERNAME="$OPTARG"
@@ -1096,9 +1120,9 @@ main() {
     END="$(printf "%(%s)T\\n" "-1")"
     DIFF="$((END - START))"
     if isNotQuiet; then
-    printCenter "normal" " Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds " "="
+        printCenter "normal" " Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds " "="
     else
-    printCenterQuiet "Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds"
+        printCenterQuiet "Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds"
     fi
 }
 

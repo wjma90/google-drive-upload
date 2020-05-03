@@ -26,6 +26,83 @@ This script does not have very many dependencies. Most of the dependencies are a
 - Uses latest gdrive v3 api.
 - Share files after uploading ( to an email or just anyone ).
 - Pretty Logging.
+- Easy to install and update.
+
+## Installation
+
+### Default values set by installation script
+
+Default branch: `labbots/google-drive-upload`
+
+Default command name: `gupload`
+
+Default installation path: `$HOME/.google-drive-upload`
+
+Default branch: `master`
+
+Default shell file: `.bashrc` or `.zshrc` or `.profile`
+
+For custom command names, repo, shell file, etc, see advanced installation method.
+
+### Basic Installation
+
+To install google-drive-upload in your system, you can run the below command:
+
+`curl --compressed -# -o- https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh | bash`
+
+and done.
+
+### Advanced Installation
+
+This section provides on how to utilise the install.sh script fully for custom usescases.
+
+First, we need to download the script, run the following command:
+
+`curl --compressed -# https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh -o install.sh`
+
+These are the flags that are available in the install.sh script:
+
+    -i | --interactive - Install script interactively, will ask for all the varibles one by one.
+
+        Note: This will disregard all arguments given with below flags.
+
+    -p | --path <dir_name> - Custom path where you want to install script.
+
+    -c | --cmd <command_name> - Custom command name, after installation script will be available as the input argument.
+
+    -r | --repo <Username/reponame> - Upload script from your custom repo,e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.
+
+    -b | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.
+
+    -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.
+
+    -D | --debug - Display script command trace.
+
+    -h | --help - Display usage instructions.
+
+Now, run the script and use flags according to your usecase.
+
+E.g: `bash install.sh -r username/reponame -p somepath -s shell_file -c command_name -b branch_name`
+
+## Updation
+
+If you have followed the above method to install the script, then you can automatically update the script.
+
+There are two methods:
+
+1. Use the script itself to update the script.
+
+    `gupload -u or gupload --update`
+
+    This will update the script where it is installed.
+
+    **If you use the this flag without actually installing the script, e.g just by `bash upload.sh -u` then it will install the script or update if already installed.**
+
+2. Run the installation script again.
+
+    Yes, just run the installation script again as we did in install section, and voila, it's done.
+
+### Note: Both above methods obeys the values set by user in advanced installation, e.g if you have installed the script with different repo, say `myrepo/gdrive-upload`, then the update will be also fetched from the same repo
 
 ## Usage
 
@@ -98,6 +175,8 @@ Other Options available are
     -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).
     
     -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename."
+    
+    -u | --update - Update the installed script in your system, if not installed, then install.
     
     -h | --help - Display usage instructions.
     

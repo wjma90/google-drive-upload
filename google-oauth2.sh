@@ -43,7 +43,7 @@ updateConfig() {
     printf "" >> "$CONFIG_PATH" # If config file doesn't exist.
     mapfile -t VALUES < "$CONFIG_PATH" && VALUES+=("$VALUE_NAME=$VALUE")
     for i in "${VALUES[@]}"; do
-        [[ $i =~ $VALUE_NAME\= ]] && FINAL+=("$VALUE_NAME=$VALUE") || FINAL+=("$i")
+        [[ $i =~ $VALUE_NAME\= ]] && FINAL+=("$VALUE_NAME=\"$VALUE\"") || FINAL+=("$i")
     done
     for i in "${FINAL[@]}"; do
         [[ ${Aseen[$i]} ]] && continue
