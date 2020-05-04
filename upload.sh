@@ -71,13 +71,13 @@ printCenter() {
         justify)
             if [[ $# = 3 ]]; then
                 declare input1="$2" symbol="$3" TO_PRINT out
-                TO_PRINT="$((TERM_COLS * 93 / 100))"
+                TO_PRINT="$((TERM_COLS * 95 / 100))"
                 { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}.. ]"; } || { out="[ $input1 ]"; }
             else
                 declare input1="$2" input2="$3" symbol="$4" TO_PRINT temp out
                 TO_PRINT="$((TERM_COLS * 40 / 100))"
                 { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.."; } || { temp+=" $input1"; }
-                TO_PRINT="$((TERM_COLS * 53 / 100))"
+                TO_PRINT="$((TERM_COLS * 55 / 100))"
                 { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. "; } || { temp+="$input2 "; }
                 out="[$temp]"
             fi
@@ -894,7 +894,7 @@ processArguments() {
                 # Do not create empty folders during a recursive upload. Use of find in this section is important.
                 # If below command is used, it lists the folder in stair structure, which we later assume while creating sub folders( if applicable ) and uploading files.
                 DIRNAMES="$(find "$INPUT" -type d -not -empty)"
-                NO_OF_SUB_FOLDERS="$(printf "%s" "$DIRNAMES" | count)"
+                NO_OF_SUB_FOLDERS="$(($(printf "%s" "$DIRNAMES" | count) - 1))"
                 # Create a loop and make folders according to list made above.
                 if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
                     clearLine 1
@@ -924,14 +924,15 @@ processArguments() {
                     else
                         printCenter "justify" "Creating folder.." "-"
                     fi
-                    unset status
+                    unset status __temp
                     DIRIDS="$(while IFS= read -r -u 4 dir; do
                         NEWDIR="${dir##*/}"
                         [[ $NO_OF_SUB_FOLDERS != 0 ]] && printCenter "justify" "Name: ""$NEWDIR""" "-" 1>&2
                         ID="$(createDirectory "$NEWDIR" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
                         # Store sub-folder directory IDs and it's path for later use.
+                        __temp+="$(printf "%s '%s'\n" "$ID" "$dir" && printf "\n")"
+                        NEXTROOTDIRID="$(: "$(printf "%s\n" "$__temp" | grep \'"$(dirname "$dir")"\')" && printf "%s\n" "${_%% *}")"
                         printf "%s '%s'\n" "$ID" "$dir"
-                        NEXTROOTDIRID=$ID
                         ((status += 1))
                         if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
                             for _ in {1..2}; do clearLine 1 1>&2; done
