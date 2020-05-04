@@ -438,7 +438,7 @@ setupArguments() {
         case "$OPTION" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
             -)
-                checkLongoptions() { [[ -z ${!OPTIND} ]] && printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "$0" "$OPTARG" "$0" && exit 1; }
+                checkLongoptions() { [[ -n ${!OPTIND} ]] && printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1 || :; }
                 case "$OPTARG" in
                     help)
                         usage
@@ -510,7 +510,7 @@ setupArguments() {
                         shorthelp
                         ;;
                     *)
-                        printf '%s: --%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "$0" "$OPTARG" "$0" && exit 1
+                        printf '%s: --%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1
                         ;;
                 esac
                 ;;
@@ -578,10 +578,10 @@ setupArguments() {
                 DEBUG=true
                 ;;
             :)
-                printf '%s: -%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "$0" "$OPTARG" "$0" && exit 1
+                printf '%s: -%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1
                 ;;
             ?)
-                printf '%s: -%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "$0" "$OPTARG" "$0" && exit 1
+                printf '%s: -%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1
                 ;;
         esac
     done
