@@ -59,6 +59,19 @@ clearLine() {
     printf "\033[%sA\033[2K" "$1"
 }
 
+# Usage: dirname "path"
+dirname() {
+    declare tmp=${1:-.}
+
+    [[ $tmp != *[!/]* ]] && { printf '/\n' && return; }
+    tmp=${tmp%%"${tmp##*[!/]}"}
+
+    [[ $tmp != */* ]] && { printf '.\n' && return; }
+    tmp=${tmp%/*} && tmp=${tmp%%"${tmp##*[!/]}"}
+
+    printf '%s\n' "${tmp:-/}"
+}
+
 # Update the script
 update() {
     printf 'Fetching update script..\n'
@@ -465,7 +478,7 @@ setupArguments() {
         case "$OPTION" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
             -)
-                checkLongoptions() { [[ -n ${!OPTIND} ]] && printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1 || :; }
+                checkLongoptions() { { [[ -n ${!OPTIND} ]] && printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1; } || :; }
                 case "$OPTARG" in
                     help)
                         usage
@@ -931,18 +944,17 @@ processArguments() {
             else
                 printCenter "justify" "Indexing files/sub-folders" " recursively.." "-"
                 # Do not create empty folders during a recursive upload. Use of find in this section is important.
-                # If below command is used, it lists the folder in stair structure, which we later assume while creating sub folders( if applicable ) and uploading files.
-                DIRNAMES="$(find "$INPUT" -type d -not -empty)"
-                NO_OF_SUB_FOLDERS="$(($(printf "%s" "$DIRNAMES" | count) - 1))"
+                mapfile -t DIRNAMES <<< "$(find "$INPUT" -type d -not -empty)"
+                NO_OF_FOLDERS="${#DIRNAMES[@]}" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
                 # Create a loop and make folders according to list made above.
                 if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
                     clearLine 1
                     printCenter "justify" """$NO_OF_SUB_FOLDERS"" Sub-folders found" "="
                 fi
                 printCenter "justify" "Indexing files.." "="
-                FILENAMES="$(find "$INPUT" -type f)"
-                if [[ -n $FILENAMES ]]; then
-                    NO_OF_FILES="$(count <<< "$FILENAMES")"
+                mapfile -t FILENAMES <<< "$(find "$INPUT" -type f)"
+                if [[ -n ${FILENAMES[1]} ]]; then
+                    NO_OF_FILES="${#FILENAMES[@]}"
                     for _ in {1..3}; do clearLine 1; done
                     if isNotQuiet; then
                         if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
@@ -958,41 +970,42 @@ processArguments() {
                         fi
                     fi
                     newLine "\n"
-                    if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                        printCenter "justify" "Creating sub-folders.." "-" && newLine "\n"
-                    else
-                        printCenter "justify" "Creating folder.." "-"
-                    fi
-                    unset status __temp
-                    DIRIDS="$(while IFS= read -r -u 4 dir; do
+                    printCenter "justify" "Creating Folder(s).." "-"
+                    { [[ $NO_OF_SUB_FOLDERS != 0 ]] && newLine "\n"; } || :
+
+                    unset status DIRIDS
+                    for dir in "${DIRNAMES[@]}"; do
+                        if [[ -n $status ]]; then
+                            __dir="$(dirname "$dir")"
+                            __temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__dir}|:_//_:|")"
+                            NEXTROOTDIRID="$(printf "%s\n" "${__temp//"|:_//_:|"${__dir}*/}")"
+                        fi
                         NEWDIR="${dir##*/}"
-                        [[ $NO_OF_SUB_FOLDERS != 0 ]] && printCenter "justify" "Name: ""$NEWDIR""" "-" 1>&2
+                        [[ $NO_OF_SUB_FOLDERS != 0 ]] && printCenter "justify" "Name: ""$NEWDIR""" "-"
                         ID="$(createDirectory "$NEWDIR" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
                         # Store sub-folder directory IDs and it's path for later use.
-                        __temp+="$(printf "%s '%s'\n" "$ID" "$dir" && printf "\n")"
-                        NEXTROOTDIRID="$(: "$(printf "%s\n" "$__temp" | grep \'"$(dirname "$dir")"\')" && printf "%s\n" "${_%% *}")"
-                        printf "%s '%s'\n" "$ID" "$dir"
                         ((status += 1))
+                        DIRIDS[$status]="$(printf "%s|:_//_:|%s|:_//_:|\n" "$ID" "$dir" && printf "\n")"
                         if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                            for _ in {1..2}; do clearLine 1 1>&2; done
-                            printCenter "justify" "Status" ": ""$status"" / ""$NO_OF_SUB_FOLDERS""" "=" 1>&2
+                            for _ in {1..2}; do clearLine 1; done
+                            printCenter "justify" "Status" ": ""$status"" / ""$NO_OF_FOLDERS""" "="
                         fi
-                    done 4<<< "$DIRNAMES")"
+                    done
+                    printf "%s\n" "${DIRIDS[@]}" >| log
+
                     if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
                         for _ in {1..2}; do clearLine 1; done
                     else
                         clearLine 1
                     fi
                     printCenter "justify" "Preparing to upload.." "-"
-                    # shellcheck disable=SC2001
-                    FILES_ROOTDIR="$(while IFS= read -r -u 4 i; do
-                        : "${i##*/}" && : "$((${#_} + 1))" && printf "%s\n" "${i::-$_}"
-                    done 4<<< "$FILENAMES")"
 
-                    # Create a final table of subfolders + files, use |:_//_:| as a seperator to handle weird filenames.
-                    FINAL_LIST="$(while IFS= read -r -u 4 ROOTDIRPATH && IFS= read -r -u 5 file; do
-                        printf "%s\n" "$ROOTDIRPATH|:_//_:|$(__DIRID="$(grep "'$ROOTDIRPATH'" <<< "$DIRIDS")" && printf "%s\n" "${__DIRID/ "'$ROOTDIRPATH'"/}")|:_//_:|$file"
-                    done 4<<< "$FILES_ROOTDIR" 5<<< "$FILENAMES")"
+                    unset status
+                    for file in "${FILENAMES[@]}"; do
+                        __rootdir="$(dirname "$file")"
+                        ((status += 1))
+                        FINAL_LIST[$status]="$(printf "%s\n" "$__rootdir|:_//_:|$(__temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__rootdir}|:_//_:|")" && printf "%s\n" "${__temp//"|:_//_:|"$__rootdir*/}")|:_//_:|$file")"
+                    done
 
                     if [[ -n $parallel ]]; then
                         { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
@@ -1004,7 +1017,7 @@ processArguments() {
                         [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "$FINAL_LIST" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
+                        printf "%s\n" "${FINAL_LIST[@]}" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
             LIST="{}"
             FILETOUPLOAD="${LIST//*"|:_//_:|"}"
             DIRTOUPLOAD="$(: "|:_//_:|""$FILETOUPLOAD" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
@@ -1040,7 +1053,7 @@ processArguments() {
                     else
                         clearLine 1 && newLine "\n"
                         ERROR_STATUS=0 SUCCESS_STATUS=0
-                        while IFS= read -r -u 4 LIST; do
+                        for LIST in "${FINAL_LIST[@]}"; do
                             FILETOUPLOAD="${LIST//*"|:_//_:|"/}"
                             DIRTOUPLOAD="$(: "|:_//_:|""$FILETOUPLOAD" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"/}")"
                             if [[ -n $OVERWRITE ]]; then
@@ -1055,7 +1068,7 @@ processArguments() {
                                 for _ in {1..2}; do clearLine 1; done
                                 printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
                             fi
-                        done 4<<< "$FINAL_LIST"
+                        done
                     fi
                 else
                     EMPTY=1
@@ -1067,7 +1080,7 @@ processArguments() {
                 if [[ $SUCCESS_STATUS -gt 0 ]]; then
                     if [[ -n $SHARE ]]; then
                         printCenter "justify" "Sharing the folder.." "-"
-                        if SHARE_MSG="$(shareID "$(read -r firstline <<< "$DIRIDS" && printf "%s\n" "${firstline%% *}")" "$ACCESS_TOKEN" "$SHARE_EMAIL")"; then
+                        if SHARE_MSG="$(shareID "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" "$ACCESS_TOKEN" "$SHARE_EMAIL")"; then
                             printf "%s\n" "$SHARE_MSG"
                         else
                             clearLine 1
@@ -1077,7 +1090,7 @@ processArguments() {
                         printCenter "justify" "FolderLink" "="
                     fi
                     isTerminal && printCenter "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                    printCenter "normal" "$(: "$(read -r firstline <<< "$DIRIDS" && printf "%s\n" "${firstline%% *}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
+                    printCenter "normal" "$(: "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
                 fi
                 newLine "\n"
                 if isNotQuiet; then
