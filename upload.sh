@@ -75,15 +75,24 @@ dirname() {
 # Update the script
 update() {
     printf 'Fetching update script..\n'
-    declare REPO="labbots/google-drive-upload" BRANCH="master"
     # shellcheck source=/dev/null
     if [[ -f "$HOME/.google-drive-upload/google-drive-upload.info" ]]; then
         source "$HOME/.google-drive-upload/google-drive-upload.info"
     fi
-    if __SCRIPT="$(curl --compressed -s https://raw.githubusercontent.com/"$REPO"/"$BRANCH"/install.sh)"; then
-        bash <<< "$__SCRIPT"
+    declare REPO="${REPO:-labbots/google-drive-upload}" TYPE_VALUE="${TYPE_VALUE:-latest}"
+    if [[ $TYPE = branch ]]; then
+        if __SCRIPT="$(curl --compressed -Ls https://raw.githubusercontent.com/"$REPO"/"$TYPE_VALUE"/install.sh)"; then
+            bash <<< "$__SCRIPT"
+        else
+            printf "Error: Cannot download update script..\n"
+        fi
     else
-        printf "Error: Cannot download update script..\n"
+        declare LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"$REPO"/releases/"$TYPE_VALUE" | grep "=\"/"$REPO"/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+        if __SCRIPT="$(curl --compressed -Ls https://raw.githubusercontent.com/"$REPO"/"$LATEST_SHA"/install.sh)"; then
+            bash <<< "$__SCRIPT"
+        else
+            printf "Error: Cannot download update script..\n"
+        fi
     fi
 }
 
