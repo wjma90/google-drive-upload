@@ -32,15 +32,17 @@ This script does not have very many dependencies. Most of the dependencies are a
 
 ### Default values set by installation script
 
-Default branch: `labbots/google-drive-upload`
+Repo: `labbots/google-drive-upload`
 
-Default command name: `gupload`
+Command name: `gupload`
 
-Default installation path: `$HOME/.google-drive-upload`
+Installation path: `$HOME/.google-drive-upload`
 
-Default branch: `master`
+Source: `release` ( can be `branch` )
 
-Default shell file: `.bashrc` or `.zshrc` or `.profile`
+Source value: `latest` ( can be `branchname` )
+
+Shell file: `.bashrc` or `.zshrc` or `.profile`
 
 For custom command names, repo, shell file, etc, see advanced installation method.
 
@@ -72,7 +74,9 @@ These are the flags that are available in the install.sh script:
 
     -r | --repo <Username/reponame> - Upload script from your custom repo,e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.
 
-    -b | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.
+    -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.
+
+    -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.
 
     -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.
 
@@ -82,7 +86,7 @@ These are the flags that are available in the install.sh script:
 
 Now, run the script and use flags according to your usecase.
 
-E.g: `bash install.sh -r username/reponame -p somepath -s shell_file -c command_name -b branch_name`
+E.g: `bash install.sh -r username/reponame -p somepath -s shell_file -c command_name -B branch_name`
 
 ## Updation
 

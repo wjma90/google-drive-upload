@@ -70,10 +70,17 @@ detectProfile() {
 }
 
 # scrape latest commit from a repo on github
-# Usage: getLatestSHA username/reponame branchname
 getLatestSHA() {
-    declare REPO="$1" BRANCH="${2:-master}" LATEST_SHA
-    LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"$REPO"/commits/"$BRANCH".atom -r 0-1000 | grep "Commit\\/")" && read -r firstline <<< "$hash" && regex="(/.*<)" && [[ $firstline =~ $regex ]] && echo "${BASH_REMATCH[1]:1:-1}")"
+    declare LATEST_SHA
+    case "$TYPE" in
+        branch)
+            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"$REPO"/commits/"$TYPE_VALUE".atom -r 0-1000 | grep "Commit\\/")" && read -r firstline <<< "$hash" && regex="(/.*<)" && [[ $firstline =~ $regex ]] && echo "${BASH_REMATCH[1]:1:-1}")"
+            ;;
+        release)
+            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"$REPO"/releases/"$TYPE_VALUE" | grep "=\"/"$REPO"/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+            ;;
+    esac
+
     echo "$LATEST_SHA"
 }
 
@@ -90,7 +97,8 @@ variables() {
     COMMAND_NAME="gupload"
     INFO_PATH="$HOME/.google-drive-upload"
     INSTALL_PATH="$HOME/.google-drive-upload/bin"
-    BRANCH="master"
+    TYPE="release"
+    TYPE_VALUE="latest"
     SHELL_RC="$(detectProfile)"
     # shellcheck source=/dev/null
     if [[ -f "$INFO_PATH"/google-drive-upload.info ]]; then
@@ -100,7 +108,7 @@ variables() {
 
 # Start a interactive session, asks for all the varibles, exit if running in a non-tty
 startInteractive() {
-    __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH BRANCH SHELL_RC)
+    __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
     printf "%s\n" "Starting Interactive mode.."
     printf "%s\n" "Press return for default values.."
     for i in "${__VALUES_ARRAY[@]}"; do
@@ -123,13 +131,13 @@ install() {
     mkdir -p "$INSTALL_PATH"
     printf 'Installing google-drive-upload..\n'
     printf "Fetching latest sha..\n"
-    LATEST_CURRENT_SHA="$(getLatestSHA "$REPO" "$BRANCH")"
+    LATEST_CURRENT_SHA="$(getLatestSHA "$REPO" "$TYPE" "$TYPE_VALUE")"
     clearLine 1
     printf "Latest sha fetched\n" && printf "Downloading script..\n"
-    if curl -s --compressed https://raw.githubusercontent.com/"$REPO"/"$BRANCH"/upload.sh -o "$INSTALL_PATH"/"$COMMAND_NAME"; then
+    if curl -Ls --compressed https://raw.githubusercontent.com/"$REPO"/"$LATEST_CURRENT_SHA"/upload.sh -o "$INSTALL_PATH"/"$COMMAND_NAME"; then
         chmod +x "$INSTALL_PATH"/"$COMMAND_NAME"
         printf "\n%s" "PATH=$PATH/:""$INSTALL_PATH""" >> "$SHELL_RC"
-        __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH BRANCH SHELL_RC)
+        __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
         for i in "${__VALUES_ARRAY[@]}"; do
             updateConfig "$i" "${!i}" "$INFO_PATH"/google-drive-upload.info
         done
@@ -137,7 +145,7 @@ install() {
         clearLine 1
         printf "Installed Successfully, Command name: %s\n" "$COMMAND_NAME"
         printf "To use the command, do\n"
-        printf "\"source %s\" or restart your terminal.\n" "$SHELL_RC"
+        printf "source %s or restart your terminal.\n" "$SHELL_RC"
         printf "To update the script in future, just run upload -U/--update.\n"
     else
         clearLine 1
@@ -149,7 +157,7 @@ install() {
 # Update the script
 update() {
     printf "Fetching latest version info..\n"
-    LATEST_CURRENT_SHA="$(getLatestSHA "$REPO" "$BRANCH")"
+    LATEST_CURRENT_SHA="$(getLatestSHA "$REPO" "$TYPE" "$TYPE_VALUE")"
     if [[ -z "$LATEST_CURRENT_SHA" ]]; then
         printf "Cannot fetch remote latest version.\n"
         exit 1
@@ -159,9 +167,13 @@ update() {
         printf "Latest google-drive-upload already installed.\n"
     else
         printf "Updating...\n"
-        curl --compressed -s https://raw.githubusercontent.com/"$REPO"/"$BRANCH"/upload.sh -o "$INSTALL_PATH"/"$COMMAND_NAME"
+        curl --compressed -Ls https://raw.githubusercontent.com/"$REPO"/"$LATEST_CURRENT_SHA"/upload.sh -o "$INSTALL_PATH"/"$COMMAND_NAME"
         updateConfig LATEST_INSTALLED_SHA "$LATEST_CURRENT_SHA" "$INFO_PATH"/google-drive-upload.info
         clearLine 1
+        __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
+        for i in "${__VALUES_ARRAY[@]}"; do
+            updateConfig "$i" "${!i}" "$INFO_PATH"/google-drive-upload.info
+        done
         printf 'Successfully Updated.\n\n'
     fi
 }
@@ -169,7 +181,7 @@ update() {
 # Setup the varibles and process getopts flags.
 setupArguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    SHORTOPTS=":Dhip:r:c:b:s:-:"
+    SHORTOPTS=":Dhip:r:c:RB:s:-:"
     while getopts "${SHORTOPTS}" OPTION; do
         case "$OPTION" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
@@ -202,7 +214,13 @@ setupArguments() {
                         ;;
                     branch)
                         checkLongoptions
-                        BRANCH="${!OPTIND}" && OPTIND=$((OPTIND + 1))
+                        TYPE_VALUE="${!OPTIND}" && OPTIND=$((OPTIND + 1))
+                        TYPE=branch
+                        ;;
+                    release)
+                        checkLongoptions
+                        TYPE_VALUE="${!OPTIND}" && OPTIND=$((OPTIND + 1))
+                        TYPE=release
                         ;;
                     shell-rc)
                         checkLongoptions
@@ -232,23 +250,24 @@ setupArguments() {
                 fi
                 ;;
             p)
-
                 INSTALL_PATH="$OPTARG"
                 ;;
             r)
-
                 REPO="$OPTARG"
                 ;;
             c)
-
                 COMMAND_NAME="$OPTARG"
                 ;;
-            b)
+            B)
+                TYPE=branch
+                TYPE_VALUE="$OPTARG"
+                ;;
 
-                BRANCH="$OPTARG"
+            R)
+                TYPE=release
+                TYPE_VALUE="$OPTARG"
                 ;;
             s)
-
                 SHELL_RC="$OPTARG"
                 ;;
             D)
