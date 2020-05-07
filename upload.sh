@@ -304,6 +304,7 @@ createDirectory() {
 }
 
 # Method to upload ( create or update ) files to google drive.
+# Interrupted uploads can be resumed.
 # Requirements: Given file path, Google folder ID and access_token.
 uploadFile() {
     [[ $# -lt 4 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
@@ -361,22 +362,23 @@ uploadFile() {
 
     [[ -z $PARALLEL ]] && printCenter "justify" "${INPUT##*/}" " | ""$READABLE_SIZE""" "="
 
-    # Curl command to initiate resumable upload session and grab the location URL
-    [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
-    UPLOADLINK="$(curl \
-        --compressed \
-        --silent \
-        -X "$REQUEST_METHOD" \
-        -H "Host: www.googleapis.com" \
-        -H "Authorization: Bearer ${TOKEN}" \
-        -H "Content-Type: application/json; charset=UTF-8" \
-        -H "X-Upload-Content-Type: $MIME_TYPE" \
-        -H "X-Upload-Content-Length: $INPUTSIZE" \
-        -d "$POSTDATA" \
-        "$URL" \
-        -D -)"
-    UPLOADLINK="$(read -r firstline <<< "${UPLOADLINK/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
-    if [[ -n $UPLOADLINK ]]; then
+    generateUploadLink() {
+        UPLOADLINK="$(curl \
+            --compressed \
+            --silent \
+            -X "$REQUEST_METHOD" \
+            -H "Host: www.googleapis.com" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json; charset=UTF-8" \
+            -H "X-Upload-Content-Type: $MIME_TYPE" \
+            -H "X-Upload-Content-Length: $INPUTSIZE" \
+            -d "$POSTDATA" \
+            "$URL" \
+            -D -)"
+        UPLOADLINK="$(read -r firstline <<< "${UPLOADLINK/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
+    }
+
+    uploadFilefromURI() {
         # Curl command to push the file to google drive.
         # If the file size is large then the content can be split to chunks and uploaded.
         # In that case content range needs to be specified. # Not implemented yet.
@@ -387,18 +389,20 @@ uploadFile() {
             -X PUT \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: $MIME_TYPE" \
-            -H "Content-Length: $INPUTSIZE" \
+            -H "Content-Length: $CONTENT_LENGTH" \
             -H "Slug: $SLUG" \
             -T "$INPUT" \
             -o- \
             --url "$UPLOADLINK" \
             --globoff \
             $CURL_ARGS)"
+    }
 
+    collectFileInfo() {
         FILE_LINK="$(: "$(printf "%s\n" "$UPLOAD_BODY" | jsonValue id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
         FILE_ID="$(printf "%s\n" "$UPLOAD_BODY" | jsonValue id)"
         # Log to the filename provided with -i/--save-id flag.
-        if [[ -n $LOG_FILE_ID && ! -d $LOG_FILE_ID && -n $UPLOAD_BODY ]]; then
+        if [[ -n $LOG_FILE_ID && ! -d $LOG_FILE_ID ]]; then
             # shellcheck disable=SC2129
             # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
             {
@@ -409,7 +413,9 @@ uploadFile() {
                 printf '\n'
             } >> "$LOG_FILE_ID"
         fi
+    }
 
+    normalLogging() {
         if [[ -n $VERBOSE_PROGRESS ]]; then
             if isNotQuiet; then
                 printCenter "justify" "$SLUG " "| $READABLE_SIZE | $STRING" "="
@@ -424,13 +430,105 @@ uploadFile() {
                 printCenterQuiet "[ $SLUG | $READABLE_SIZE | $STRING ]"
             fi
         fi
-    else
+    }
+
+    errorLogging() {
         if isNotQuiet; then
             printCenter "justify" "Upload link generation ERROR" ", $SLUG not $STRING." "=" 1>&2 && [[ -z "$PARALLEL" ]] && printf "\n\n\n"
         else
             printCenterQuiet "Upload link generation ERROR, $SLUG not $STRING." 1>&2
         fi
         UPLOAD_STATUS=ERROR && export UPLOAD_STATUS # Send a error status, used in folder uploads.
+    }
+
+    logUploadSession() {
+        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+        { [[ $INPUTSIZE -gt 1000000 ]] && printf "%s\n" "$UPLOADLINK" >| "${__file}"; } || :
+    }
+
+    removeUploadSession() {
+        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+        { [[ -f "${__file}" ]] && rm "${__file}"; } || :
+    }
+
+    fullUpload() {
+        generateUploadLink
+        if [[ -n $UPLOADLINK ]]; then
+            logUploadSession
+            CONTENT_LENGTH="$INPUTSIZE" && uploadFilefromURI
+            if [[ -n ${UPLOAD_BODY} ]]; then
+                collectFileInfo
+                normalLogging
+                removeUploadSession
+            else
+                errorLogging
+            fi
+        else
+            errorLogging
+        fi
+    }
+    # https://developers.google.com/drive/api/v3/manage-uploads
+    __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+    if [[ -f "${__file}" ]]; then
+        RESUMABLE="$(< "${__file}")"
+        UPLOADLINK="$RESUMABLE"
+        HTTP_CODE="$(curl -X PUT "${UPLOADLINK}" -s --write-out %"{http_code}")"
+        if [[ $HTTP_CODE = "308" ]]; then
+            UPLOADED_RANGE="$(: "$(curl \
+                --compressed -s \
+                -X PUT \
+                -H "Content-Range: bytes */$INPUTSIZE" \
+                --url "$UPLOADLINK" \
+                --globoff \
+                -D -)" && : "$(printf "%s\n" "${_/*[R,r]ange: bytes=0-/}")" && read -r firstline <<< "$_" && printf "%s\n" "${firstline//$'\r'/}")"
+            if [[ ${UPLOADED_RANGE} =~ (^[0-9]) ]]; then
+                CONTENT_RANGE="$(printf "bytes %s-%s/%s\n" "$((UPLOADED_RANGE + 1))" "$((INPUTSIZE - 1))" "${INPUTSIZE}")"
+                CONTENT_LENGTH="$((INPUTSIZE - $((UPLOADED_RANGE + 1))))"
+                [[ -z $PARALLEL ]] && printCenter "justify" "Resuming interrupted upload.." "-"
+                # Curl command to push the file to google drive.
+                # If the file size is large then the content can be split to chunks and uploaded.
+                # In that case content range needs to be specified. # Not implemented yet.
+                [[ -z $PARALLEL ]] && printCenter "justify" "Uploading.." "-"
+                # shellcheck disable=SC2086 # Because unnecessary to another check because $CURL_ARGS won't be anything problematic.
+                # Resuming interrupted uploads needs http1.1
+                UPLOAD_BODY="$(curl \
+                    --http1.1 \
+                    --compressed \
+                    -X PUT \
+                    -H "Authorization: Bearer ${TOKEN}" \
+                    -H "Content-Type: $MIME_TYPE" \
+                    -H "Content-Range: $CONTENT_RANGE" \
+                    -H "Content-Length: $CONTENT_LENGTH" \
+                    -H "Slug: $SLUG" \
+                    -T "$INPUT" \
+                    -o- \
+                    --url "$UPLOADLINK" \
+                    --globoff \
+                    -s)" || :
+                if [[ -n ${UPLOAD_BODY} ]]; then
+                    collectFileInfo
+                    normalLogging resume
+                    removeUploadSession
+                else
+                    errorLogging
+                fi
+            else
+                [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
+                fullUpload
+            fi
+        elif [[ $HTTP_CODE =~ 40* ]]; then
+            [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
+            fullUpload
+        elif [[ $HTTP_CODE =~ [200,201] ]]; then
+            UPLOAD_BODY="$HTTP_CODE"
+            collectFileInfo
+            normalLogging
+            removeUploadSession
+        fi
+    else
+        # Curl command to initiate resumable upload session and grab the location URL
+        [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
+        fullUpload
     fi
 }
 
