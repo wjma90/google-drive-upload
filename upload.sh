@@ -87,7 +87,8 @@ update() {
             printf "Error: Cannot download update script..\n"
         fi
     else
-        declare LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"$REPO"/releases/"$TYPE_VALUE" | grep "=\"/"$REPO"/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+        declare LATEST_SHA
+        LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"$REPO"/releases/"$TYPE_VALUE" | grep "=\"/""$REPO""/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
         if __SCRIPT="$(curl --compressed -Ls https://raw.githubusercontent.com/"$REPO"/"$LATEST_SHA"/install.sh)"; then
             bash <<< "$__SCRIPT"
         else
@@ -860,6 +861,7 @@ processArguments() {
             printCenter "normal" "$FILE_LINK" " "
             printf "\n"
         elif [[ -d $INPUT ]]; then
+            unset EMPTY
             # Unset PARALLEL value if input is file, for preserving the logging output.
             [[ -n $PARALLEL_UPLOAD ]] && { parallel=true || unset parallel; }
 
@@ -879,28 +881,28 @@ processArguments() {
             # Skip the sub folders and find recursively all the files and upload them.
             if [[ -n $SKIP_SUBDIRS ]]; then
                 printCenter "justify" "Indexing files recursively.." "-"
-                FILENAMES="$(find "$INPUT" -type f)"
-                [[ -z $FILENAMES ]] && clearLine 1 && printCenter "justify" "No files inside the folder.." "=" && break # Check in case of zero files.
-                NO_OF_FILES="$(count <<< "$FILENAMES")"
-                for _ in {1..2}; do clearLine 1; done
-                if isNotQuiet; then
-                    printCenter "justify" "Folder: $FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "=" && printf "\n"
-                else
-                    printCenterQuiet "[ Folder: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]"
-                fi
-                ID="$(createDirectory "$INPUT" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
-                DIRIDS="$ID"
-                if [[ -n $parallel ]]; then
-                    { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
-                    # Export because xargs cannot access if it is just an internal variable.
-                    export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
-                    export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet
+                mapfile -t FILENAMES <<< "$(find "$INPUT" -type f)"
+                if [[ -n ${FILENAMES[0]} ]]; then
+                    NO_OF_FILES="${#FILENAMES[@]}"
+                    for _ in {1..2}; do clearLine 1; done
+                    if isNotQuiet; then
+                        printCenter "justify" "Folder: $FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "=" && printf "\n"
+                    else
+                        printCenterQuiet "[ Folder: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]"
+                    fi
+                    ID="$(createDirectory "$INPUT" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
+                    DIRIDS[1]="$ID"
+                    if [[ -n $parallel ]]; then
+                        { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
+                        # Export because xargs cannot access if it is just an internal variable.
+                        export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
+                        export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet
 
-                    [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
-                    [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
+                        [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
+                        [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
 
-                    # shellcheck disable=SC2016
-                    printf "%s\n" "$FILENAMES" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
+                        # shellcheck disable=SC2016
+                        printf "%s\n" "${FILENAMES[@]}" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
             if [[ -n $OVERWRITE ]]; then
         uploadFile update "{}" "$ID" "$ACCESS_TOKEN" parallel
             else
@@ -908,47 +910,50 @@ processArguments() {
             fi
             ' 1>| "$TMPFILE"SUCCESS 2>| "$TMPFILE"ERROR &
 
-                    while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
-                    newLine "\n"
-                    ERROR_STATUS=0 SUCCESS_STATUS=0
-                    while true; do
-                        SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
-                        ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
-                        bashSleep 1
-                        if isNotQuiet; then
-                            if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                        while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
+                        newLine "\n"
+                        ERROR_STATUS=0 SUCCESS_STATUS=0
+                        while true; do
+                            SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
+                            ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
+                            bashSleep 1
+                            if isNotQuiet; then
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
+                                    clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                                fi
+                            else
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
+                                    clearLine 1 && printCenterQuiet "Status: ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED"
+                                fi
                             fi
-                        else
-                            if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                clearLine 1 && printCenterQuiet "Status: ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED"
+                            TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
+                            [[ $TOTAL = "$NO_OF_FILES" ]] && break
+                        done
+                        for _ in {1..2}; do clearLine 1; done
+                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n\n"
+                    else
+                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n"
+
+                        ERROR_STATUS=0 SUCCESS_STATUS=0
+                        for file in "${FILENAMES[@]}"; do
+                            DIRTOUPLOAD="$ID"
+                            if [[ -n $OVERWRITE ]]; then
+                                uploadFile update "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                            else
+                                uploadFile create "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
                             fi
-                        fi
-                        TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                        [[ $TOTAL = "$NO_OF_FILES" ]] && break
-                    done
-                    for _ in {1..2}; do clearLine 1; done
-                    [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n\n"
+                            [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
+                            if [[ $VERBOSE = true || $VERBOSE_PROGRESS = true ]]; then
+                                printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "=" && newLine "\n"
+                            else
+                                for _ in {1..2}; do clearLine 1; done
+                                printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "="
+
+                            fi
+                        done
+                    fi
                 else
-                    [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n"
-
-                    ERROR_STATUS=0 SUCCESS_STATUS=0
-                    while IFS= read -r -u 4 file; do
-                        DIRTOUPLOAD="$ID"
-                        if [[ -n $OVERWRITE ]]; then
-                            uploadFile update "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
-                        else
-                            uploadFile create "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
-                        fi
-                        [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
-                        if [[ $VERBOSE = true || $VERBOSE_PROGRESS = true ]]; then
-                            printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "=" && newLine "\n"
-                        else
-                            for _ in {1..2}; do clearLine 1; done
-                            printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "="
-
-                        fi
-                    done 4<<< "$FILENAMES"
+                    newLine "\n" && EMPTY=1
                 fi
             else
                 printCenter "justify" "Indexing files/sub-folders" " recursively.." "-"
@@ -962,7 +967,7 @@ processArguments() {
                 fi
                 printCenter "justify" "Indexing files.." "="
                 mapfile -t FILENAMES <<< "$(find "$INPUT" -type f)"
-                if [[ -n ${FILENAMES[1]} ]]; then
+                if [[ -n ${FILENAMES[0]} ]]; then
                     NO_OF_FILES="${#FILENAMES[@]}"
                     for _ in {1..3}; do clearLine 1; done
                     if isNotQuiet; then
@@ -1000,7 +1005,6 @@ processArguments() {
                             printCenter "justify" "Status" ": ""$status"" / ""$NO_OF_FOLDERS""" "="
                         fi
                     done
-                    printf "%s\n" "${DIRIDS[@]}" >| log
 
                     if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
                         for _ in {1..2}; do clearLine 1; done
