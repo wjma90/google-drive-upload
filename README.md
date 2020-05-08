@@ -27,6 +27,7 @@ This script does not have very many dependencies. Most of the dependencies are a
 - Share files after uploading ( to an email or just anyone ).
 - Pretty Logging.
 - Easy to install and update.
+- Resume interrupted uploads.
 
 ## Installation
 
@@ -201,6 +202,15 @@ To Upload file to specific google folder
     ./upload.sh -r <google-folder-id> <file/directory-path>
 
 The script also allows to upload directories. If directory path is provided as argument to the script then the script recursively uploads all the sub-folder and files present in the heirarchial way as it is present on the local machine.
+
+### Resume interrupted uploads.
+
+Either interrupted due to bad internet connection or manual interruption.
+
+ - It checks 3 things, filesize, name and workspace folder. If a upload was interrupted, then resumable upload link is saved in "$HOME/.google-drive-upload/", later on when running the same command as before, if applicable, resumes the upload from the same position as before.
+ - Small files cannot be resumed, less that 1 MB, and the amount of size uploaded should be more than 1 MB to resume.
+ - No progress bars for resumable uploads it messes up with output.
+ - You can interrupt many times you want, it will resume( hopefully ).
 
 ## Inspired By
 
