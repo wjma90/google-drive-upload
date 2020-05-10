@@ -14,6 +14,7 @@ Options:\n
   -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, Max value = 10.\n
   -f | --[file|folder] - Specify files and folders explicitly in one command, use multiple times for multiple folder/files. See README for more use of this command.\n 
   -o | --overwrite - Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders.\n
+  -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
   -z | --config <config_path> - Override default config file with custom config file.\n
@@ -347,195 +348,208 @@ uploadFile() {
         # Check if file actually exists, and create if not.
         EXISTING_FILE_ID=$(checkExistingFile "${SLUG}" "${FOLDER_ID}" "${ACCESS_TOKEN}")
         if [[ -n ${EXISTING_FILE_ID} ]]; then
-            # https://developers.google.com/drive/api/""${API_VERSION}""/reference/files/update
-            REQUEST_METHOD=PATCH
-            URL="${API_URL}/upload/drive/${API_VERSION}/files/${EXISTING_FILE_ID}?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
-            # JSON post data to specify the file name and folder under while the file to be updated
-            POSTDATA="{\"mimeType\": \"${MIME_TYPE}\",\"name\": \"${SLUG}\",\"addParents\": [\"${FOLDER_ID}\"]}"
-            STRING=Updated
+            if [[ -n ${SKIP_DUPLICATES} ]]; then
+                SKIP_DUPLICATES_FILE_ID="${EXISTING_FILE_ID}"
+                FILE_LINK="${SKIP_DUPLICATES_FILE_ID/${SKIP_DUPLICATES_FILE_ID}/https://drive.google.com/open?id=${SKIP_DUPLICATES_FILE_ID}}"
+            else
+                # https://developers.google.com/drive/api/""${API_VERSION}""/reference/files/update
+                REQUEST_METHOD=PATCH
+                URL="${API_URL}/upload/drive/${API_VERSION}/files/${EXISTING_FILE_ID}?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
+                # JSON post data to specify the file name and folder under while the file to be updated
+                POSTDATA="{\"mimeType\": \"${MIME_TYPE}\",\"name\": \"${SLUG}\",\"addParents\": [\"${FOLDER_ID}\"]}"
+                STRING=Updated
+            fi
         else
             JOB=create
         fi
     fi
 
-    # Set proper variables for creating files
-    if [[ ${JOB} = create ]]; then
-        URL="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
-        REQUEST_METHOD=POST
-        # JSON post data to specify the file name and folder under while the file to be created
-        POSTDATA="{\"mimeType\": \"${MIME_TYPE}\",\"name\": \"${SLUG}\",\"parents\": [\"${FOLDER_ID}\"]}"
-        STRING=Uploaded
-    fi
-
-    [[ -z ${PARALLEL} ]] && printCenter "justify" "${INPUT##*/}" " | ${READABLE_SIZE}" "="
-
-    generateUploadLink() {
-        UPLOADLINK="$(curl \
-            --compressed \
-            --silent \
-            -X "${REQUEST_METHOD}" \
-            -H "Host: www.googleapis.com" \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: application/json; charset=UTF-8" \
-            -H "X-Upload-Content-Type: ${MIME_TYPE}" \
-            -H "X-Upload-Content-Length: ${INPUTSIZE}" \
-            -d "$POSTDATA" \
-            "${URL}" \
-            -D -)"
-        UPLOADLINK="$(read -r firstline <<< "${UPLOADLINK/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
-    }
-
-    uploadFilefromURI() {
-        # Curl command to push the file to google drive.
-        # If the file size is large then the content can be split to chunks and uploaded.
-        # In that case content range needs to be specified. # Not implemented yet.
-        [[ -z ${PARALLEL} ]] && clearLine 1 && printCenter "justify" "Uploading.." "-"
-        # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_ARGS} won't be anything problematic.
-        UPLOAD_BODY="$(curl \
-            --compressed \
-            -X PUT \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: ${MIME_TYPE}" \
-            -H "Content-Length: ${INPUTSIZE}" \
-            -H "Slug: ${SLUG}" \
-            -T "${INPUT}" \
-            -o- \
-            --url "${UPLOADLINK}" \
-            --globoff \
-            ${CURL_ARGS})"
-    }
-
-    collectFileInfo() {
-        FILE_LINK="$(: "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
-        FILE_ID="$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)"
-        # Log to the filename provided with -i/--save-id flag.
-        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
-            # shellcheck disable=SC2129
-            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-            {
-                printf "%s\n" "Link: ${FILE_LINK}"
-                : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue name)" && printf "%s\n" "${_/*/Name: $_}"
-                : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue mimeType)" && printf "%s\n" "${_/*/Type: $_}"
-                printf '\n'
-            } >> "${LOG_FILE_ID}"
-        fi
-    }
-
-    normalLogging() {
-        if [[ -n ${VERBOSE_PROGRESS} ]]; then
-            if isNotQuiet; then
-                printCenter "justify" "${SLUG} " "| ${READABLE_SIZE} | ${STRING}" "="
-            else
-                printCenterQuiet "[ ${SLUG} | ${READABLE_SIZE} | ${STRING} ]"
-            fi
-        else
-            if isNotQuiet; then
-                [[ -z ${PARALLEL} ]] && for _ in {1..3}; do clearLine 1; done
-                printCenter "justify" "${SLUG} " "| ${READABLE_SIZE} | ${STRING}" "="
-            else
-                printCenterQuiet "[ ${SLUG} | ${READABLE_SIZE} | ${STRING} ]"
-            fi
-        fi
-    }
-
-    errorLogging() {
+    if [[ -n ${SKIP_DUPLICATES_FILE_ID} ]]; then
         if isNotQuiet; then
-            printCenter "justify" "Upload link generation ERROR" ", ${SLUG} not ${STRING}." "=" 1>&2 && [[ -z ${PARALLEL} ]] && printf "\n\n\n"
+            printCenter "justify" "${SLUG}" " already exists." "="
         else
-            printCenterQuiet "Upload link generation ERROR, ${SLUG} not ${STRING}." 1>&2
+            printCenterQuiet "[ ${SLUG} already exists. ]"
         fi
-        UPLOAD_STATUS=ERROR && export UPLOAD_STATUS # Send a error status, used in folder uploads.
-    }
-
-    logUploadSession() {
-        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
-        { [[ ${INPUTSIZE} -gt 1000000 ]] && printf "%s\n" "${UPLOADLINK}" >| "${__file}"; } || :
-    }
-
-    removeUploadSession() {
-        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
-        { [[ -f "${__file}" ]] && rm "${__file}"; } || :
-    }
-
-    fullUpload() {
-        generateUploadLink
-        if [[ -n ${UPLOADLINK} ]]; then
-            logUploadSession
-            uploadFilefromURI
-            if [[ -n ${UPLOAD_BODY} ]]; then
-                collectFileInfo
-                normalLogging
-                removeUploadSession
-            else
-                errorLogging
-            fi
-        else
-            errorLogging
+    else
+        # Set proper variables for creating files
+        if [[ ${JOB} = create ]]; then
+            URL="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
+            REQUEST_METHOD=POST
+            # JSON post data to specify the file name and folder under while the file to be created
+            POSTDATA="{\"mimeType\": \"${MIME_TYPE}\",\"name\": \"${SLUG}\",\"parents\": [\"${FOLDER_ID}\"]}"
+            STRING=Uploaded
         fi
-    }
-    # https://developers.google.com/drive/api/v3/manage-uploads
-    __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
-    if [[ -f "${__file}" ]]; then
-        RESUMABLE="$(< "${__file}")"
-        UPLOADLINK="${RESUMABLE}"
-        HTTP_CODE="$(curl -X PUT "${UPLOADLINK}" -s --write-out %"{http_code}")"
-        if [[ ${HTTP_CODE} = "308" ]]; then
-            UPLOADED_RANGE="$(: "$(curl \
-                --compressed -s \
+
+        [[ -z ${PARALLEL} ]] && printCenter "justify" "${INPUT##*/}" " | ${READABLE_SIZE}" "="
+
+        generateUploadLink() {
+            UPLOADLINK="$(curl \
+                --compressed \
+                --silent \
+                -X "${REQUEST_METHOD}" \
+                -H "Host: www.googleapis.com" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json; charset=UTF-8" \
+                -H "X-Upload-Content-Type: ${MIME_TYPE}" \
+                -H "X-Upload-Content-Length: ${INPUTSIZE}" \
+                -d "$POSTDATA" \
+                "${URL}" \
+                -D -)"
+            UPLOADLINK="$(read -r firstline <<< "${UPLOADLINK/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
+        }
+
+        uploadFilefromURI() {
+            # Curl command to push the file to google drive.
+            # If the file size is large then the content can be split to chunks and uploaded.
+            # In that case content range needs to be specified. # Not implemented yet.
+            [[ -z ${PARALLEL} ]] && clearLine 1 && printCenter "justify" "Uploading.." "-"
+            # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_ARGS} won't be anything problematic.
+            UPLOAD_BODY="$(curl \
+                --compressed \
                 -X PUT \
-                -H "Content-Range: bytes */${INPUTSIZE}" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: ${MIME_TYPE}" \
+                -H "Content-Length: ${INPUTSIZE}" \
+                -H "Slug: ${SLUG}" \
+                -T "${INPUT}" \
+                -o- \
                 --url "${UPLOADLINK}" \
                 --globoff \
-                -D -)" && : "$(printf "%s\n" "${_/*[R,r]ange: bytes=0-/}")" && read -r firstline <<< "$_" && printf "%s\n" "${firstline//$'\r'/}")"
-            if [[ ${UPLOADED_RANGE} =~ (^[0-9]) ]]; then
-                CONTENT_RANGE="$(printf "bytes %s-%s/%s\n" "$((UPLOADED_RANGE + 1))" "$((INPUTSIZE - 1))" "${INPUTSIZE}")"
-                CONTENT_LENGTH="$((INPUTSIZE - $((UPLOADED_RANGE + 1))))"
-                [[ -z ${PARALLEL} ]] && printCenter "justify" "Resuming interrupted upload.." "-"
-                # Curl command to push the file to google drive.
-                # If the file size is large then the content can be split to chunks and uploaded.
-                # In that case content range needs to be specified. # Not implemented yet.
-                [[ -z ${PARALLEL} ]] && printCenter "justify" "Uploading.." "-"
-                # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_ARGS} won't be anything problematic.
-                # Resuming interrupted uploads needs http1.1
-                UPLOAD_BODY="$(curl \
-                    --http1.1 \
-                    --compressed \
-                    -X PUT \
-                    -H "Authorization: Bearer ${TOKEN}" \
-                    -H "Content-Type: ${MIME_TYPE}" \
-                    -H "Content-Range: ${CONTENT_RANGE}" \
-                    -H "Content-Length: ${CONTENT_LENGTH}" \
-                    -H "Slug: ${SLUG}" \
-                    -T "${INPUT}" \
-                    -o- \
-                    --url "${UPLOADLINK}" \
-                    --globoff \
-                    -s)" || :
+                ${CURL_ARGS})"
+        }
+
+        collectFileInfo() {
+            FILE_LINK="$(: "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
+            FILE_ID="$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)"
+            # Log to the filename provided with -i/--save-id flag.
+            if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
+                # shellcheck disable=SC2129
+                # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
+                {
+                    printf "%s\n" "Link: ${FILE_LINK}"
+                    : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue name)" && printf "%s\n" "${_/*/Name: $_}"
+                    : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)" && printf "%s\n" "${_/*/ID: $_}"
+                    : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue mimeType)" && printf "%s\n" "${_/*/Type: $_}"
+                    printf '\n'
+                } >> "${LOG_FILE_ID}"
+            fi
+        }
+
+        normalLogging() {
+            if [[ -n ${VERBOSE_PROGRESS} ]]; then
+                if isNotQuiet; then
+                    printCenter "justify" "${SLUG} " "| ${READABLE_SIZE} | ${STRING}" "="
+                else
+                    printCenterQuiet "[ ${SLUG} | ${READABLE_SIZE} | ${STRING} ]"
+                fi
+            else
+                if isNotQuiet; then
+                    [[ -z ${PARALLEL} ]] && for _ in {1..3}; do clearLine 1; done
+                    printCenter "justify" "${SLUG} " "| ${READABLE_SIZE} | ${STRING}" "="
+                else
+                    printCenterQuiet "[ ${SLUG} | ${READABLE_SIZE} | ${STRING} ]"
+                fi
+            fi
+        }
+
+        errorLogging() {
+            if isNotQuiet; then
+                printCenter "justify" "Upload link generation ERROR" ", ${SLUG} not ${STRING}." "=" 1>&2 && [[ -z ${PARALLEL} ]] && printf "\n\n\n"
+            else
+                printCenterQuiet "Upload link generation ERROR, ${SLUG} not ${STRING}." 1>&2
+            fi
+            UPLOAD_STATUS=ERROR && export UPLOAD_STATUS # Send a error status, used in folder uploads.
+        }
+
+        logUploadSession() {
+            __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+            { [[ ${INPUTSIZE} -gt 1000000 ]] && printf "%s\n" "${UPLOADLINK}" >| "${__file}"; } || :
+        }
+
+        removeUploadSession() {
+            __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+            { [[ -f "${__file}" ]] && rm "${__file}"; } || :
+        }
+
+        fullUpload() {
+            generateUploadLink
+            if [[ -n ${UPLOADLINK} ]]; then
+                logUploadSession
+                uploadFilefromURI
                 if [[ -n ${UPLOAD_BODY} ]]; then
                     collectFileInfo
-                    normalLogging resume
+                    normalLogging
                     removeUploadSession
                 else
                     errorLogging
                 fi
             else
+                errorLogging
+            fi
+        }
+        # https://developers.google.com/drive/api/v3/manage-uploads
+        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+        if [[ -f "${__file}" ]]; then
+            RESUMABLE="$(< "${__file}")"
+            UPLOADLINK="${RESUMABLE}"
+            HTTP_CODE="$(curl -X PUT "${UPLOADLINK}" -s --write-out %"{http_code}")"
+            if [[ ${HTTP_CODE} = "308" ]]; then
+                UPLOADED_RANGE="$(: "$(curl \
+                    --compressed -s \
+                    -X PUT \
+                    -H "Content-Range: bytes */${INPUTSIZE}" \
+                    --url "${UPLOADLINK}" \
+                    --globoff \
+                    -D -)" && : "$(printf "%s\n" "${_/*[R,r]ange: bytes=0-/}")" && read -r firstline <<< "$_" && printf "%s\n" "${firstline//$'\r'/}")"
+                if [[ ${UPLOADED_RANGE} =~ (^[0-9]) ]]; then
+                    CONTENT_RANGE="$(printf "bytes %s-%s/%s\n" "$((UPLOADED_RANGE + 1))" "$((INPUTSIZE - 1))" "${INPUTSIZE}")"
+                    CONTENT_LENGTH="$((INPUTSIZE - $((UPLOADED_RANGE + 1))))"
+                    [[ -z ${PARALLEL} ]] && printCenter "justify" "Resuming interrupted upload.." "-"
+                    # Curl command to push the file to google drive.
+                    # If the file size is large then the content can be split to chunks and uploaded.
+                    # In that case content range needs to be specified. # Not implemented yet.
+                    [[ -z ${PARALLEL} ]] && printCenter "justify" "Uploading.." "-"
+                    # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_ARGS} won't be anything problematic.
+                    # Resuming interrupted uploads needs http1.1
+                    UPLOAD_BODY="$(curl \
+                        --http1.1 \
+                        --compressed \
+                        -X PUT \
+                        -H "Authorization: Bearer ${TOKEN}" \
+                        -H "Content-Type: ${MIME_TYPE}" \
+                        -H "Content-Range: ${CONTENT_RANGE}" \
+                        -H "Content-Length: ${CONTENT_LENGTH}" \
+                        -H "Slug: ${SLUG}" \
+                        -T "${INPUT}" \
+                        -o- \
+                        --url "${UPLOADLINK}" \
+                        --globoff \
+                        -s)" || :
+                    if [[ -n ${UPLOAD_BODY} ]]; then
+                        collectFileInfo
+                        normalLogging resume
+                        removeUploadSession
+                    else
+                        errorLogging
+                    fi
+                else
+                    [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
+                    fullUpload
+                fi
+            elif [[ ${HTTP_CODE} =~ 40* ]]; then
                 [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
                 fullUpload
+            elif [[ ${HTTP_CODE} =~ [200,201] ]]; then
+                UPLOAD_BODY="${HTTP_CODE}"
+                collectFileInfo
+                normalLogging
+                removeUploadSession
             fi
-        elif [[ ${HTTP_CODE} =~ 40* ]]; then
+        else
+            # Curl command to initiate resumable upload session and grab the location URL
             [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
             fullUpload
-        elif [[ ${HTTP_CODE} =~ [200,201] ]]; then
-            UPLOAD_BODY="${HTTP_CODE}"
-            collectFileInfo
-            normalLogging
-            removeUploadSession
         fi
-    else
-        # Curl command to initiate resumable upload session and grab the location URL
-        [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
-        fullUpload
     fi
 }
 
@@ -573,7 +587,7 @@ setupArguments() {
     # Internal variables
     # De-initialize if any variables set already.
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_INPUT_ARRAY INPUT_ARRAY
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_SUBDIRS CONFIG ROOTDIR QUIET
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS CONFIG ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
     CURL_ARGS="-#"
 
@@ -588,7 +602,7 @@ setupArguments() {
     REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-    SHORTOPTS=":qvVi:sp:of:Shur:C:Dz:-:"
+    SHORTOPTS=":qvVi:sp:odf:Shur:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
         case "${OPTION}" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
@@ -645,6 +659,9 @@ setupArguments() {
                         ;;
                     overwrite)
                         OVERWRITE=Overwrite
+                        ;;
+                    skip-duplicates)
+                        SKIP_DUPLICATES=true
                         ;;
                     file | folder)
                         checkLongoptions
@@ -719,6 +736,9 @@ setupArguments() {
                 ;;
             o)
                 OVERWRITE=Overwrite
+                ;;
+            d)
+                SKIP_DUPLICATES="Skip Existing"
                 ;;
             f)
                 INPUT_ARRAY+=("${OPTARG}")
@@ -947,13 +967,14 @@ processArguments() {
         # Check if the argument is a file or a directory.
         if [[ -f ${INPUT} ]]; then
             printCenter "justify" "Given Input" ": FILE" "="
-            if [[ -n ${OVERWRITE} ]]; then
-                printCenter "justify" "Upload Method" ": Overwrite" "-" && newLine "\n"
+            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
+                printCenter "justify" "Upload Method" ": ${SKIP_DUPLICATES:-$OVERWRITE}" "-" && newLine "\n"
                 uploadFile update "${INPUT}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}"
             else
                 printCenter "justify" "Upload Method" ": Create" "-" && newLine "\n"
                 uploadFile create "${INPUT}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}"
             fi
+            FILE_ID="${SKIP_DUPLICATES_FILE_ID:-${FILE_ID}}"
             [[ ${UPLOAD_STATUS} = ERROR ]] && for _ in {1..2}; do clearLine 1; done && return 1
             if [[ -n "${SHARE}" ]]; then
                 printCenter "justify" "Sharing the file.." "-"
@@ -976,7 +997,7 @@ processArguments() {
 
             FOLDER_NAME="${INPUT##*/}"
 
-            printCenter "justify" "Upload Method" ": ${OVERWRITE:-Create}" "="
+            printCenter "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "="
 
             printCenter "justify" "Given Input" ": FOLDER" "-" && newLine "\n"
             printCenter "justify" "Folder: ${FOLDER_NAME}" "="
@@ -1000,7 +1021,7 @@ processArguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
+                        export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES
                         export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet
 
                         [[ -f ${TMPFILE}SUCCESS ]] && rm "${TMPFILE}"SUCCESS
@@ -1008,7 +1029,7 @@ processArguments() {
 
                         # shellcheck disable=SC2016
                         printf "%s\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
-            if [[ -n ${OVERWRITE} ]]; then
+            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
         uploadFile update "{}" "${ID}" "${ACCESS_TOKEN}" parallel
             else
         uploadFile create "{}" "${ID}" "${ACCESS_TOKEN}" parallel
@@ -1024,11 +1045,11 @@ processArguments() {
                             bashSleep 1
                             if isNotQuiet; then
                                 if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
-                                    clearLine 1 && printCenter "justify" "Status" ": ${SUCCESS_STATUS} UPLOADED | ${ERROR_STATUS} FAILED" "="
+                                    clearLine 1 && printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                                 fi
                             else
                                 if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
-                                    clearLine 1 && printCenterQuiet "Status: ${SUCCESS_STATUS} UPLOADED | ${ERROR_STATUS} FAILED"
+                                    clearLine 1 && printCenterQuiet "Status: ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed"
                                 fi
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
@@ -1042,17 +1063,17 @@ processArguments() {
                         ERROR_STATUS=0 SUCCESS_STATUS=0
                         for file in "${FILENAMES[@]}"; do
                             DIRTOUPLOAD="${ID}"
-                            if [[ -n ${OVERWRITE} ]]; then
+                            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
                                 uploadFile update "${file}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             else
                                 uploadFile create "${file}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             fi
                             [[ ${UPLOAD_STATUS} = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
                             if [[ ${VERBOSE} = true || ${VERBOSE_PROGRESS} = true ]]; then
-                                printCenter "justify" "Status: ${SUCCESS_STATUS} UPLOADED" " | ${ERROR_STATUS} FAILED" "=" && newLine "\n"
+                                printCenter "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && newLine "\n"
                             else
                                 for _ in {1..2}; do clearLine 1; done
-                                printCenter "justify" "Status: ${SUCCESS_STATUS} UPLOADED" " | ${ERROR_STATUS} FAILED" "="
+                                printCenter "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "="
 
                             fi
                         done
@@ -1140,7 +1161,7 @@ processArguments() {
             LIST="{}"
             FILETOUPLOAD="${LIST//*"|:_//_:|"}"
             DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
-            if [[ -n ${OVERWRITE} ]]; then
+            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
         uploadFile update "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}" parallel
             else
         uploadFile create "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}" parallel
@@ -1156,11 +1177,11 @@ processArguments() {
                             bashSleep 1
                             if isNotQuiet; then
                                 if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
-                                    clearLine 1 && printCenter "justify" "Status" ": ${SUCCESS_STATUS} UPLOADED | ${ERROR_STATUS} FAILED" "="
+                                    clearLine 1 && printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                                 fi
                             else
                                 if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
-                                    clearLine 1 && printCenterQuiet "Status: ${SUCCESS_STATUS} UPLOADED | ${ERROR_STATUS} FAILED"
+                                    clearLine 1 && printCenterQuiet "Status: ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed"
                                 fi
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
@@ -1175,17 +1196,17 @@ processArguments() {
                         for LIST in "${FINAL_LIST[@]}"; do
                             FILETOUPLOAD="${LIST//*"|:_//_:|"/}"
                             DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"/}")"
-                            if [[ -n ${OVERWRITE} ]]; then
+                            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
                                 uploadFile update "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             else
                                 uploadFile create "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             fi
                             [[ ${UPLOAD_STATUS} = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
                             if [[ -n ${VERBOSE} || -n ${VERBOSE_PROGRESS} ]]; then
-                                printCenter "justify" "Status" ": ${SUCCESS_STATUS} UPLOADED | ${ERROR_STATUS} FAILED" "=" && newLine "\n"
+                                printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "=" && newLine "\n"
                             else
                                 for _ in {1..2}; do clearLine 1; done
-                                printCenter "justify" "Status" ": ${SUCCESS_STATUS} UPLOADED | ${ERROR_STATUS} FAILED" "="
+                                printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                             fi
                         done
                     fi

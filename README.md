@@ -161,6 +161,11 @@ Other Options available are
     
     -o | --overwrite - Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders and single/multiple files.
     
+        Note :
+          If you use this flag along with -d/--skip-duplicates, the skip duplicates flag is preferred.
+ 
+    -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.
+    
     -f | --[file/folder] - Specify files and folders explicitly in one command, use multiple times for multiple folder/files.   
 
         For uploading multiple input into the same folder:
