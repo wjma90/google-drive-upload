@@ -14,6 +14,7 @@ Options:\n
   -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, Max value = 10.\n
   -f | --[file|folder] - Specify files and folders explicitly in one command, use multiple times for multiple folder/files. See README for more use of this command.\n 
   -o | --overwrite - Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders.\n
+  -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
   -z | --config <config_path> - Override default config file with custom config file.\n
@@ -23,39 +24,51 @@ Options:\n
   -u | --update - Update the installed script in your system.\n
   --info - Show detailed info, only if script is installed system wide.\n
   -D | --debug - Display script command trace.\n
-  -h | --help - Display usage instructions.\n\n" "${0##*/}"
+  -h | --help - Display usage instructions.\n" "${0##*/}"
     exit 0
 }
 
 shortHelp() {
-    printf "No valid arguments provided, use -h/--help flag to see usage.\n\n"
+    printf "No valid arguments provided, use -h/--help flag to see usage.\n"
     exit 0
 }
 
 # Exit if bash present on system is older than 4.x
 checkBashVersion() {
-    { ! [[ "${BASH_VERSINFO:-0}" -ge 4 ]] && printf "Bash version lower than 4.x not supported\n\n" && exit 1; } || :
+    { ! [[ ${BASH_VERSINFO:-0} -ge 4 ]] && printf "Bash version lower than 4.x not supported.\n" && exit 1; } || :
 }
 
 # Check if we are running in a terminal.
 isTerminal() {
-    [[ -t 1 || -z $TERM ]] && return 0 || return 1
+    [[ -t 1 || -z ${TERM} ]] && return 0 || return 1
 }
 
 # Check for -q/--quiet
 isNotQuiet() {
-    [[ -z $QUIET ]] && return 0 || return 1
+    [[ -z ${QUIET} ]] && return 0 || return 1
 }
 
 # Usage: bashSleep 1 ( where is time in seconds )
 # https://github.com/dylanaraps/pure-bash-bible#use-read-as-an-alternative-to-the-sleep-command
 bashSleep() {
-    read -rt "$1" <> <(:) || :
+    read -rt "${1}" <> <(:) || :
 }
 
 # Move cursor to nth no. of line and clear it to the begining.
 clearLine() {
-    printf "\033[%sA\033[2K" "$1"
+    printf "\033[%sA\033[2K" "${1}"
+}
+
+# Convert bytes to human readable form, pure bash.
+# https://unix.stackexchange.com/a/259254
+bytesToHuman() {
+    declare b=${1:-0} d='' s=0 S=(Bytes {K,M,G,T,P,E,Y,Z}B)
+    while ((b > 1024)); do
+        d="$(printf ".%02d" $((b % 1024 * 100 / 1024)))"
+        b=$((b / 1024))
+        ((s++))
+    done
+    printf "%s\n" "${b}${d} ${S[${s}]}"
 }
 
 # Usage: dirname "path"
@@ -63,10 +76,10 @@ dirname() {
     declare tmp=${1:-.}
 
     [[ $tmp != *[!/]* ]] && { printf '/\n' && return; }
-    tmp=${tmp%%"${tmp##*[!/]}"}
+    tmp="${tmp%%"${tmp##*[!/]}"}"
 
     [[ $tmp != */* ]] && { printf '.\n' && return; }
-    tmp=${tmp%/*} && tmp=${tmp%%"${tmp##*[!/]}"}
+    tmp=${tmp%/*} && tmp="${tmp%%"${tmp##*[!/]}"}"
 
     printf '%s\n' "${tmp:-/}"
 }
@@ -75,32 +88,33 @@ dirname() {
 update() {
     printf 'Fetching update script..\n'
     # shellcheck source=/dev/null
-    if [[ -f "$HOME/.google-drive-upload/google-drive-upload.info" ]]; then
-        source "$HOME/.google-drive-upload/google-drive-upload.info"
+    if [[ -f "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
+        source "${HOME}/.google-drive-upload/google-drive-upload.info"
     fi
     declare REPO="${REPO:-labbots/google-drive-upload}" TYPE_VALUE="${TYPE_VALUE:-latest}"
-    if [[ $TYPE = branch ]]; then
-        if __SCRIPT="$(curl --compressed -Ls https://raw.githubusercontent.com/"$REPO"/"$TYPE_VALUE"/install.sh)"; then
-            bash <<< "$__SCRIPT"
+    if [[ ${TYPE} = branch ]]; then
+        if __SCRIPT="$(curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${TYPE_VALUE}/install.sh")"; then
+            bash <<< "${__SCRIPT}"
         else
             printf "Error: Cannot download update script..\n"
         fi
     else
         declare LATEST_SHA
-        LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"$REPO"/releases/"$TYPE_VALUE" | grep "=\"/""$REPO""/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
-        if __SCRIPT="$(curl --compressed -Ls https://raw.githubusercontent.com/"$REPO"/"$LATEST_SHA"/install.sh)"; then
-            bash <<< "$__SCRIPT"
+        LATEST_SHA="$(hash="$(curl -L --compressed -s "https://github.com/${REPO}/releases/${TYPE_VALUE}" | grep "=\"/""${REPO}""/commit")" &&
+            read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+        if __SCRIPT="$(curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_SHA}/install.sh")"; then
+            bash <<< "${__SCRIPT}"
         else
             printf "Error: Cannot download update script..\n"
         fi
     fi
 }
 
-# Just print the "$HOME/.google-drive-upload/google-drive-upload.info"
+# Just print the "${HOME}/.google-drive-upload/google-drive-upload.info"
 versionInfo() {
     # shellcheck source=/dev/null
-    if [[ -f "$HOME/.google-drive-upload/google-drive-upload.info" ]]; then
-        cat "$HOME/.google-drive-upload/google-drive-upload.info"
+    if [[ -f "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
+        cat "${HOME}/.google-drive-upload/google-drive-upload.info"
     else
         printf "google-drive-upload is not installed system wide.\n"
     fi
@@ -111,24 +125,24 @@ versionInfo() {
 # https://gist.github.com/TrinityCoder/911059c83e5f7a351b785921cf7ecda
 printCenter() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare -i TERM_COLS="$COLUMNS"
-    declare type="$1" filler
-    case "$type" in
+    declare -i TERM_COLS="${COLUMNS}"
+    declare type="${1}" filler
+    case "${type}" in
         normal)
-            declare out="$2" && symbol="$3"
+            declare out="${2}" && symbol="${3}"
             ;;
         justify)
             if [[ $# = 3 ]]; then
-                declare input1="$2" symbol="$3" TO_PRINT out
+                declare input1="${2}" symbol="${3}" TO_PRINT out
                 TO_PRINT="$((TERM_COLS * 95 / 100))"
-                { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}.. ]"; } || { out="[ $input1 ]"; }
+                { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}.. ]"; } || { out="[ ${input1} ]"; }
             else
-                declare input1="$2" input2="$3" symbol="$4" TO_PRINT temp out
+                declare input1="${2}" input2="${3}" symbol="${4}" TO_PRINT temp out
                 TO_PRINT="$((TERM_COLS * 40 / 100))"
-                { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.."; } || { temp+=" $input1"; }
+                { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.."; } || { temp+=" ${input1}"; }
                 TO_PRINT="$((TERM_COLS * 55 / 100))"
-                { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. "; } || { temp+="$input2 "; }
-                out="[$temp]"
+                { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. "; } || { temp+="${input2} "; }
+                out="[${temp}]"
             fi
             ;;
         *) return 1 ;;
@@ -136,7 +150,7 @@ printCenter() {
 
     declare -i str_len=${#out}
     [[ $str_len -ge $(((TERM_COLS - 1))) ]] && {
-        printf "%s\n" "$out" && return 0
+        printf "%s\n" "${out}" && return 0
     }
 
     declare -i filler_len="$(((TERM_COLS - str_len) / 2))"
@@ -145,7 +159,7 @@ printCenter() {
         filler="${filler}${ch}"
     done
 
-    printf "%s%s%s" "$filler" "$out" "$filler"
+    printf "%s%s%s" "${filler}" "${out}" "${filler}"
     [[ $(((TERM_COLS - str_len) % 2)) -ne 0 ]] && printf "%s" "${ch}"
     printf "\n"
 
@@ -164,7 +178,7 @@ count() {
 jsonValue() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare LC_ALL=C num="${2:-1}"
-    grep -o "\"""$1""\"\:.*" | sed -e "s/.*\"""$1""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
+    grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
 }
 
 # Remove array duplicates, maintain the order as original.
@@ -174,8 +188,8 @@ removeArrayDuplicates() {
     declare -A Aseen
     Aunique=()
     for i in "$@"; do
-        [[ ${Aseen[$i]} ]] && continue
-        Aunique+=("$i") && Aseen[$i]=x
+        [[ ${Aseen[${i}]} ]] && continue
+        Aunique+=("${i}") && Aseen[${i}]=x
     done
     printf '%s\n' "${Aunique[@]}"
 }
@@ -184,17 +198,17 @@ removeArrayDuplicates() {
 # Usage: updateConfig valuename value configpath
 updateConfig() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare VALUE_NAME="$1" VALUE="$2" CONFIG_PATH="$3" FINAL=()
+    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=()
     declare -A Aseen
-    printf "" >> "$CONFIG_PATH" # If config file doesn't exist.
-    mapfile -t VALUES < "$CONFIG_PATH" && VALUES+=("$VALUE_NAME=$VALUE")
+    printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
+    mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=${VALUE}")
     for i in "${VALUES[@]}"; do
-        [[ $i =~ $VALUE_NAME\= ]] && FINAL+=("$VALUE_NAME=\"$VALUE\"") || FINAL+=("$i")
+        [[ ${i} =~ ${VALUE_NAME}\= ]] && FINAL+=("${VALUE_NAME}=\"${VALUE}\"") || FINAL+=("${i}")
     done
     for i in "${FINAL[@]}"; do
-        [[ ${Aseen[$i]} ]] && continue
-        printf "%s\n" "$i" && Aseen[$i]=x
-    done >| "$CONFIG_PATH"
+        [[ ${Aseen[${i}]} ]] && continue
+        printf "%s\n" "${i}" && Aseen[${i}]=x
+    done >| "${CONFIG_PATH}"
 }
 
 # Extract file/folder ID from the given INPUT in case of gdrive URL.
@@ -202,12 +216,12 @@ updateConfig() {
 extractID() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare LC_ALL=C ID="${1//[[:space:]]/}"
-    case "$ID" in
+    case "${ID}" in
         *'drive.google.com'*'id='*) ID="${ID/*id=/}" && ID="${ID/&*/}" && ID="${ID/\?*/}" ;;
         *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com/file/d/'*) ID="${ID/*\/d\//}" && ID="${ID/\/*/}" ;;
         *'drive.google.com'*'drive'*'folders'*) ID="${ID/*\/folders\//}" && ID="${ID/&*/}" && ID="${ID/\?*/}" ;;
     esac
-    printf "%s\n" "$ID"
+    printf "%s\n" "${ID}"
 }
 
 # Usage: urlEncode "string".
@@ -216,12 +230,12 @@ urlEncode() {
     declare LC_ALL=C
     for ((i = 0; i < ${#1}; i++)); do
         : "${1:i:1}"
-        case "$_" in
+        case "${_}" in
             [a-zA-Z0-9.~_-])
-                printf '%s' "$_"
+                printf '%s' "${_}"
                 ;;
             *)
-                printf '%%%02X' "'$_"
+                printf '%%%02X' "'${_}"
                 ;;
         esac
     done
@@ -232,7 +246,7 @@ urlEncode() {
 # Requirements: Given file/folder ID, query, and access_token.
 driveInfo() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare FOLDER_ID="$1" FETCH="$2" TOKEN="$3"
+    declare FOLDER_ID="${1}" FETCH="${2}" TOKEN="${3}"
     declare SEARCH_RESPONSE FETCHED_DATA
 
     SEARCH_RESPONSE="$(curl \
@@ -240,11 +254,11 @@ driveInfo() {
         --silent \
         -XGET \
         -H "Authorization: Bearer ${TOKEN}" \
-        """$API_URL""/drive/""$API_VERSION""/files/""$FOLDER_ID""?fields=""$FETCH""&supportsAllDrives=true")"
+        "${API_URL}/drive/${API_VERSION}/files/${FOLDER_ID}?fields=${FETCH}&supportsAllDrives=true")"
 
-    FETCHED_DATA="$(jsonValue "$FETCH" 1 <<< "$SEARCH_RESPONSE")"
-    { [[ -z $FETCHED_DATA ]] && jsonValue message 1 <<< "$SEARCH_RESPONSE" && return 1; } || {
-        printf "%s\n" "$FETCHED_DATA"
+    FETCHED_DATA="$(jsonValue "${FETCH}" 1 <<< "${SEARCH_RESPONSE}")"
+    { [[ -z ${FETCHED_DATA} ]] && jsonValue message 1 <<< "${SEARCH_RESPONSE}" && return 1; } || {
+        printf "%s\n" "${FETCHED_DATA}"
     }
 }
 
@@ -252,54 +266,54 @@ driveInfo() {
 # Requirements: Given file name, rootdir, and access_token.
 checkExistingFile() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare NAME="$1" ROOTDIR="$2" TOKEN="$3"
+    declare NAME="${1}" ROOTDIR="${2}" TOKEN="${3}"
     declare QUERY SEARCH_RESPONSE ID
 
-    QUERY="$(urlEncode "name='$NAME' and '$ROOTDIR' in parents and trashed=false and 'me' in writers")"
+    QUERY="$(urlEncode "name='${NAME}' and '${ROOTDIR}' in parents and trashed=false and 'me' in writers")"
 
     SEARCH_RESPONSE="$(curl \
         --compressed \
         --silent \
         -XGET \
         -H "Authorization: Bearer ${TOKEN}" \
-        """$API_URL""/drive/""$API_VERSION""/files?q=${QUERY}&fields=files(id)")"
+        "${API_URL}/drive/${API_VERSION}/files?q=${QUERY}&fields=files(id)")"
 
-    ID="$(jsonValue id 1 <<< "$SEARCH_RESPONSE")"
-    printf "%s\n" "$ID"
+    ID="$(jsonValue id 1 <<< "${SEARCH_RESPONSE}")"
+    printf "%s\n" "${ID}"
 }
 
 # Method to create directory in google drive.
 # Requirements: Foldername, Root folder ID ( the folder in which the new folder will be created ) and access_token.
 createDirectory() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare DIRNAME="$1" ROOTDIR="$2" TOKEN="$3"
+    declare DIRNAME="${1}" ROOTDIR="${2}" TOKEN="${3}"
     declare QUERY SEARCH_RESPONSE FOLDER_ID
 
-    QUERY="$(urlEncode "mimeType='application/vnd.google-apps.folder' and name='$DIRNAME' and trashed=false and '$ROOTDIR' in parents")"
+    QUERY="$(urlEncode "mimeType='application/vnd.google-apps.folder' and name='${DIRNAME}' and trashed=false and '${ROOTDIR}' in parents")"
 
     SEARCH_RESPONSE="$(curl \
         --compressed \
         --silent \
         -XGET \
         -H "Authorization: Bearer ${TOKEN}" \
-        """$API_URL""/drive/""$API_VERSION""/files?q=${QUERY}&fields=files(id)&supportsAllDrives=true")"
+        "${API_URL}/drive/${API_VERSION}/files?q=${QUERY}&fields=files(id)&supportsAllDrives=true")"
 
-    FOLDER_ID="$(printf "%s\n" "$SEARCH_RESPONSE" | jsonValue id 1)"
+    FOLDER_ID="$(printf "%s\n" "${SEARCH_RESPONSE}" | jsonValue id 1)"
 
-    if [[ -z $FOLDER_ID ]]; then
+    if [[ -z ${FOLDER_ID} ]]; then
         declare CREATE_FOLDER_POST_DATA CREATE_FOLDER_RESPONSE
-        CREATE_FOLDER_POST_DATA="{\"mimeType\": \"application/vnd.google-apps.folder\",\"name\": \"$DIRNAME\",\"parents\": [\"$ROOTDIR\"]}"
+        CREATE_FOLDER_POST_DATA="{\"mimeType\": \"application/vnd.google-apps.folder\",\"name\": \"${DIRNAME}\",\"parents\": [\"${ROOTDIR}\"]}"
         CREATE_FOLDER_RESPONSE="$(curl \
             --compressed \
             --silent \
             -X POST \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json; charset=UTF-8" \
-            -d "$CREATE_FOLDER_POST_DATA" \
-            """$API_URL""/drive/""$API_VERSION""/files?fields=id&supportsAllDrives=true")"
-        FOLDER_ID="$(jsonValue id <<< "$CREATE_FOLDER_RESPONSE")"
+            -d "${CREATE_FOLDER_POST_DATA}" \
+            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true")"
+        FOLDER_ID="$(jsonValue id <<< "${CREATE_FOLDER_RESPONSE}")"
     fi
-    printf "%s\n" "$FOLDER_ID"
+    printf "%s\n" "${FOLDER_ID}"
 }
 
 # Method to upload ( create or update ) files to google drive.
@@ -307,26 +321,21 @@ createDirectory() {
 # Requirements: Given file path, Google folder ID and access_token.
 uploadFile() {
     [[ $# -lt 4 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare JOB="$1" INPUT="$2" FOLDER_ID="$3" TOKEN="$4" PARALLEL="$5"
+    declare JOB="${1}" INPUT="${2}" FOLDER_ID="${3}" TOKEN="${4}" PARALLEL="${5}"
     declare SLUG INPUTNAME EXTENSION INPUTSIZE READABLE_SIZE REQUEST_METHOD URL POSTDATA UPLOADLINK UPLOAD_BODY STRING
 
     SLUG="${INPUT##*/}"
     INPUTNAME="${SLUG%.*}"
     EXTENSION="${SLUG##*.}"
-    INPUTSIZE="$(wc -c < "$INPUT")"
-    if type -p awk > /dev/null 2>&1; then
-        # https://unix.stackexchange.com/a/374877
-        READABLE_SIZE="$(awk '{ split( "B KB MB GB TB PB" , v ); s=1; while( $1>1024 ){ $1/=1024; s++ } printf "%.2f %s", $1, v[s] }' <<< "$INPUTSIZE")"
-    else
-        READABLE_SIZE=$(__SIZE=$(du -h "$INPUT") && printf "%s\n" "${__SIZE/[[:space:]]*/}")
-    fi
+    INPUTSIZE="$(wc -c < "${INPUT}")"
+    READABLE_SIZE="$(bytesToHuman "${INPUTSIZE}")"
 
-    if [[ $INPUTNAME = "$EXTENSION" ]]; then
+    if [[ ${INPUTNAME} = "${EXTENSION}" ]]; then
         declare MIME_TYPE
         if type -p mimetype > /dev/null 2>&1; then
-            MIME_TYPE="$(mimetype --output-format %m "$INPUT")"
+            MIME_TYPE="$(mimetype --output-format %m "${INPUT}")"
         elif type -p file > /dev/null 2>&1; then
-            MIME_TYPE="$(file --brief --mime-type "$INPUT")"
+            MIME_TYPE="$(file --brief --mime-type "${INPUT}")"
         else
             printCenter "justify" "Error: file or mimetype command not found." && printf "\n"
             exit 1
@@ -334,200 +343,213 @@ uploadFile() {
     fi
 
     # Set proper variables for overwriting files
-    if [[ $JOB = update ]]; then
+    if [[ ${JOB} = update ]]; then
         declare EXISTING_FILE_ID
         # Check if file actually exists, and create if not.
-        EXISTING_FILE_ID=$(checkExistingFile "$SLUG" "$FOLDER_ID" "$ACCESS_TOKEN")
-        if [[ -n $EXISTING_FILE_ID ]]; then
-            # https://developers.google.com/drive/api/""$API_VERSION""/reference/files/update
-            REQUEST_METHOD=PATCH
-            URL="""$API_URL""/upload/drive/""$API_VERSION""/files/""$EXISTING_FILE_ID""?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
-            # JSON post data to specify the file name and folder under while the file to be updated
-            POSTDATA="{\"mimeType\": \"$MIME_TYPE\",\"name\": \"$SLUG\",\"addParents\": [\"$FOLDER_ID\"]}"
-            STRING=Updated
+        EXISTING_FILE_ID=$(checkExistingFile "${SLUG}" "${FOLDER_ID}" "${ACCESS_TOKEN}")
+        if [[ -n ${EXISTING_FILE_ID} ]]; then
+            if [[ -n ${SKIP_DUPLICATES} ]]; then
+                SKIP_DUPLICATES_FILE_ID="${EXISTING_FILE_ID}"
+                FILE_LINK="${SKIP_DUPLICATES_FILE_ID/${SKIP_DUPLICATES_FILE_ID}/https://drive.google.com/open?id=${SKIP_DUPLICATES_FILE_ID}}"
+            else
+                # https://developers.google.com/drive/api/""${API_VERSION}""/reference/files/update
+                REQUEST_METHOD=PATCH
+                URL="${API_URL}/upload/drive/${API_VERSION}/files/${EXISTING_FILE_ID}?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
+                # JSON post data to specify the file name and folder under while the file to be updated
+                POSTDATA="{\"mimeType\": \"${MIME_TYPE}\",\"name\": \"${SLUG}\",\"addParents\": [\"${FOLDER_ID}\"]}"
+                STRING=Updated
+            fi
         else
             JOB=create
         fi
     fi
 
-    # Set proper variables for creating files
-    if [[ $JOB = create ]]; then
-        URL="""$API_URL""/upload/drive/""$API_VERSION""/files?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
-        REQUEST_METHOD=POST
-        # JSON post data to specify the file name and folder under while the file to be created
-        POSTDATA="{\"mimeType\": \"$MIME_TYPE\",\"name\": \"$SLUG\",\"parents\": [\"$FOLDER_ID\"]}"
-        STRING=Uploaded
-    fi
-
-    [[ -z $PARALLEL ]] && printCenter "justify" "${INPUT##*/}" " | ""$READABLE_SIZE""" "="
-
-    generateUploadLink() {
-        UPLOADLINK="$(curl \
-            --compressed \
-            --silent \
-            -X "$REQUEST_METHOD" \
-            -H "Host: www.googleapis.com" \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: application/json; charset=UTF-8" \
-            -H "X-Upload-Content-Type: $MIME_TYPE" \
-            -H "X-Upload-Content-Length: $INPUTSIZE" \
-            -d "$POSTDATA" \
-            "$URL" \
-            -D -)"
-        UPLOADLINK="$(read -r firstline <<< "${UPLOADLINK/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
-    }
-
-    uploadFilefromURI() {
-        # Curl command to push the file to google drive.
-        # If the file size is large then the content can be split to chunks and uploaded.
-        # In that case content range needs to be specified. # Not implemented yet.
-        [[ -z $PARALLEL ]] && clearLine 1 && printCenter "justify" "Uploading.." "-"
-        # shellcheck disable=SC2086 # Because unnecessary to another check because $CURL_ARGS won't be anything problematic.
-        UPLOAD_BODY="$(curl \
-            --compressed \
-            -X PUT \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: $MIME_TYPE" \
-            -H "Content-Length: $CONTENT_LENGTH" \
-            -H "Slug: $SLUG" \
-            -T "$INPUT" \
-            -o- \
-            --url "$UPLOADLINK" \
-            --globoff \
-            $CURL_ARGS)"
-    }
-
-    collectFileInfo() {
-        FILE_LINK="$(: "$(printf "%s\n" "$UPLOAD_BODY" | jsonValue id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
-        FILE_ID="$(printf "%s\n" "$UPLOAD_BODY" | jsonValue id)"
-        # Log to the filename provided with -i/--save-id flag.
-        if [[ -n $LOG_FILE_ID && ! -d $LOG_FILE_ID ]]; then
-            # shellcheck disable=SC2129
-            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-            {
-                printf "%s\n" "Link: $FILE_LINK"
-                : "$(printf "%s\n" "$UPLOAD_BODY" | jsonValue name)" && printf "%s\n" "${_/*/Name: $_}"
-                : "$(printf "%s\n" "$UPLOAD_BODY" | jsonValue id)" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "$UPLOAD_BODY" | jsonValue mimeType)" && printf "%s\n" "${_/*/Type: $_}"
-                printf '\n'
-            } >> "$LOG_FILE_ID"
-        fi
-    }
-
-    normalLogging() {
-        if [[ -n $VERBOSE_PROGRESS ]]; then
-            if isNotQuiet; then
-                printCenter "justify" "$SLUG " "| $READABLE_SIZE | $STRING" "="
-            else
-                printCenterQuiet "[ $SLUG | $READABLE_SIZE | $STRING ]"
-            fi
-        else
-            if isNotQuiet; then
-                [[ -z "$PARALLEL" ]] && for _ in {1..3}; do clearLine 1; done
-                printCenter "justify" "$SLUG " "| $READABLE_SIZE | $STRING" "="
-            else
-                printCenterQuiet "[ $SLUG | $READABLE_SIZE | $STRING ]"
-            fi
-        fi
-    }
-
-    errorLogging() {
+    if [[ -n ${SKIP_DUPLICATES_FILE_ID} ]]; then
         if isNotQuiet; then
-            printCenter "justify" "Upload link generation ERROR" ", $SLUG not $STRING." "=" 1>&2 && [[ -z "$PARALLEL" ]] && printf "\n\n\n"
+            printCenter "justify" "${SLUG}" " already exists." "="
         else
-            printCenterQuiet "Upload link generation ERROR, $SLUG not $STRING." 1>&2
+            printCenterQuiet "[ ${SLUG} already exists. ]"
         fi
-        UPLOAD_STATUS=ERROR && export UPLOAD_STATUS # Send a error status, used in folder uploads.
-    }
-
-    logUploadSession() {
-        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
-        { [[ $INPUTSIZE -gt 1000000 ]] && printf "%s\n" "$UPLOADLINK" >| "${__file}"; } || :
-    }
-
-    removeUploadSession() {
-        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
-        { [[ -f "${__file}" ]] && rm "${__file}"; } || :
-    }
-
-    fullUpload() {
-        generateUploadLink
-        if [[ -n $UPLOADLINK ]]; then
-            logUploadSession
-            CONTENT_LENGTH="$INPUTSIZE" && uploadFilefromURI
-            if [[ -n ${UPLOAD_BODY} ]]; then
-                collectFileInfo
-                normalLogging
-                removeUploadSession
-            else
-                errorLogging
-            fi
-        else
-            errorLogging
+    else
+        # Set proper variables for creating files
+        if [[ ${JOB} = create ]]; then
+            URL="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true&supportsTeamDrives=true"
+            REQUEST_METHOD=POST
+            # JSON post data to specify the file name and folder under while the file to be created
+            POSTDATA="{\"mimeType\": \"${MIME_TYPE}\",\"name\": \"${SLUG}\",\"parents\": [\"${FOLDER_ID}\"]}"
+            STRING=Uploaded
         fi
-    }
-    # https://developers.google.com/drive/api/v3/manage-uploads
-    __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
-    if [[ -f "${__file}" ]]; then
-        RESUMABLE="$(< "${__file}")"
-        UPLOADLINK="$RESUMABLE"
-        HTTP_CODE="$(curl -X PUT "${UPLOADLINK}" -s --write-out %"{http_code}")"
-        if [[ $HTTP_CODE = "308" ]]; then
-            UPLOADED_RANGE="$(: "$(curl \
-                --compressed -s \
+
+        [[ -z ${PARALLEL} ]] && printCenter "justify" "${INPUT##*/}" " | ${READABLE_SIZE}" "="
+
+        generateUploadLink() {
+            UPLOADLINK="$(curl \
+                --compressed \
+                --silent \
+                -X "${REQUEST_METHOD}" \
+                -H "Host: www.googleapis.com" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: application/json; charset=UTF-8" \
+                -H "X-Upload-Content-Type: ${MIME_TYPE}" \
+                -H "X-Upload-Content-Length: ${INPUTSIZE}" \
+                -d "$POSTDATA" \
+                "${URL}" \
+                -D -)"
+            UPLOADLINK="$(read -r firstline <<< "${UPLOADLINK/*[L,l]ocation: /}" && printf "%s\n" "${firstline//$'\r'/}")"
+        }
+
+        uploadFilefromURI() {
+            # Curl command to push the file to google drive.
+            # If the file size is large then the content can be split to chunks and uploaded.
+            # In that case content range needs to be specified. # Not implemented yet.
+            [[ -z ${PARALLEL} ]] && clearLine 1 && printCenter "justify" "Uploading.." "-"
+            # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_ARGS} won't be anything problematic.
+            UPLOAD_BODY="$(curl \
+                --compressed \
                 -X PUT \
-                -H "Content-Range: bytes */$INPUTSIZE" \
-                --url "$UPLOADLINK" \
+                -H "Authorization: Bearer ${TOKEN}" \
+                -H "Content-Type: ${MIME_TYPE}" \
+                -H "Content-Length: ${INPUTSIZE}" \
+                -H "Slug: ${SLUG}" \
+                -T "${INPUT}" \
+                -o- \
+                --url "${UPLOADLINK}" \
                 --globoff \
-                -D -)" && : "$(printf "%s\n" "${_/*[R,r]ange: bytes=0-/}")" && read -r firstline <<< "$_" && printf "%s\n" "${firstline//$'\r'/}")"
-            if [[ ${UPLOADED_RANGE} =~ (^[0-9]) ]]; then
-                CONTENT_RANGE="$(printf "bytes %s-%s/%s\n" "$((UPLOADED_RANGE + 1))" "$((INPUTSIZE - 1))" "${INPUTSIZE}")"
-                CONTENT_LENGTH="$((INPUTSIZE - $((UPLOADED_RANGE + 1))))"
-                [[ -z $PARALLEL ]] && printCenter "justify" "Resuming interrupted upload.." "-"
-                # Curl command to push the file to google drive.
-                # If the file size is large then the content can be split to chunks and uploaded.
-                # In that case content range needs to be specified. # Not implemented yet.
-                [[ -z $PARALLEL ]] && printCenter "justify" "Uploading.." "-"
-                # shellcheck disable=SC2086 # Because unnecessary to another check because $CURL_ARGS won't be anything problematic.
-                # Resuming interrupted uploads needs http1.1
-                UPLOAD_BODY="$(curl \
-                    --http1.1 \
-                    --compressed \
-                    -X PUT \
-                    -H "Authorization: Bearer ${TOKEN}" \
-                    -H "Content-Type: $MIME_TYPE" \
-                    -H "Content-Range: $CONTENT_RANGE" \
-                    -H "Content-Length: $CONTENT_LENGTH" \
-                    -H "Slug: $SLUG" \
-                    -T "$INPUT" \
-                    -o- \
-                    --url "$UPLOADLINK" \
-                    --globoff \
-                    -s)" || :
+                ${CURL_ARGS})"
+        }
+
+        collectFileInfo() {
+            FILE_LINK="$(: "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
+            FILE_ID="$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)"
+            # Log to the filename provided with -i/--save-id flag.
+            if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
+                # shellcheck disable=SC2129
+                # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
+                {
+                    printf "%s\n" "Link: ${FILE_LINK}"
+                    : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue name)" && printf "%s\n" "${_/*/Name: $_}"
+                    : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue id)" && printf "%s\n" "${_/*/ID: $_}"
+                    : "$(printf "%s\n" "${UPLOAD_BODY}" | jsonValue mimeType)" && printf "%s\n" "${_/*/Type: $_}"
+                    printf '\n'
+                } >> "${LOG_FILE_ID}"
+            fi
+        }
+
+        normalLogging() {
+            if [[ -n ${VERBOSE_PROGRESS} ]]; then
+                if isNotQuiet; then
+                    printCenter "justify" "${SLUG} " "| ${READABLE_SIZE} | ${STRING}" "="
+                else
+                    printCenterQuiet "[ ${SLUG} | ${READABLE_SIZE} | ${STRING} ]"
+                fi
+            else
+                if isNotQuiet; then
+                    [[ -z ${PARALLEL} ]] && for _ in {1..3}; do clearLine 1; done
+                    printCenter "justify" "${SLUG} " "| ${READABLE_SIZE} | ${STRING}" "="
+                else
+                    printCenterQuiet "[ ${SLUG} | ${READABLE_SIZE} | ${STRING} ]"
+                fi
+            fi
+        }
+
+        errorLogging() {
+            if isNotQuiet; then
+                printCenter "justify" "Upload link generation ERROR" ", ${SLUG} not ${STRING}." "=" 1>&2 && [[ -z ${PARALLEL} ]] && printf "\n\n\n"
+            else
+                printCenterQuiet "Upload link generation ERROR, ${SLUG} not ${STRING}." 1>&2
+            fi
+            UPLOAD_STATUS=ERROR && export UPLOAD_STATUS # Send a error status, used in folder uploads.
+        }
+
+        logUploadSession() {
+            __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+            { [[ ${INPUTSIZE} -gt 1000000 ]] && printf "%s\n" "${UPLOADLINK}" >| "${__file}"; } || :
+        }
+
+        removeUploadSession() {
+            __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+            { [[ -f "${__file}" ]] && rm "${__file}"; } || :
+        }
+
+        fullUpload() {
+            generateUploadLink
+            if [[ -n ${UPLOADLINK} ]]; then
+                logUploadSession
+                uploadFilefromURI
                 if [[ -n ${UPLOAD_BODY} ]]; then
                     collectFileInfo
-                    normalLogging resume
+                    normalLogging
                     removeUploadSession
                 else
                     errorLogging
                 fi
             else
-                [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
-                fullUpload
+                errorLogging
             fi
-        elif [[ $HTTP_CODE =~ 40* ]]; then
-            [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
+        }
+        # https://developers.google.com/drive/api/v3/manage-uploads
+        __file="${HOME}/.google-drive-upload/${SLUG}__::__${FOLDER_ID}__::__${INPUTSIZE}"
+        if [[ -f "${__file}" ]]; then
+            RESUMABLE="$(< "${__file}")"
+            UPLOADLINK="${RESUMABLE}"
+            HTTP_CODE="$(curl -X PUT "${UPLOADLINK}" -s --write-out %"{http_code}")"
+            if [[ ${HTTP_CODE} = "308" ]]; then
+                UPLOADED_RANGE="$(: "$(curl \
+                    --compressed -s \
+                    -X PUT \
+                    -H "Content-Range: bytes */${INPUTSIZE}" \
+                    --url "${UPLOADLINK}" \
+                    --globoff \
+                    -D -)" && : "$(printf "%s\n" "${_/*[R,r]ange: bytes=0-/}")" && read -r firstline <<< "$_" && printf "%s\n" "${firstline//$'\r'/}")"
+                if [[ ${UPLOADED_RANGE} =~ (^[0-9]) ]]; then
+                    CONTENT_RANGE="$(printf "bytes %s-%s/%s\n" "$((UPLOADED_RANGE + 1))" "$((INPUTSIZE - 1))" "${INPUTSIZE}")"
+                    CONTENT_LENGTH="$((INPUTSIZE - $((UPLOADED_RANGE + 1))))"
+                    [[ -z ${PARALLEL} ]] && printCenter "justify" "Resuming interrupted upload.." "-"
+                    # Curl command to push the file to google drive.
+                    # If the file size is large then the content can be split to chunks and uploaded.
+                    # In that case content range needs to be specified. # Not implemented yet.
+                    [[ -z ${PARALLEL} ]] && printCenter "justify" "Uploading.." "-"
+                    # shellcheck disable=SC2086 # Because unnecessary to another check because ${CURL_ARGS} won't be anything problematic.
+                    # Resuming interrupted uploads needs http1.1
+                    UPLOAD_BODY="$(curl \
+                        --http1.1 \
+                        --compressed \
+                        -X PUT \
+                        -H "Authorization: Bearer ${TOKEN}" \
+                        -H "Content-Type: ${MIME_TYPE}" \
+                        -H "Content-Range: ${CONTENT_RANGE}" \
+                        -H "Content-Length: ${CONTENT_LENGTH}" \
+                        -H "Slug: ${SLUG}" \
+                        -T "${INPUT}" \
+                        -o- \
+                        --url "${UPLOADLINK}" \
+                        --globoff \
+                        -s)" || :
+                    if [[ -n ${UPLOAD_BODY} ]]; then
+                        collectFileInfo
+                        normalLogging resume
+                        removeUploadSession
+                    else
+                        errorLogging
+                    fi
+                else
+                    [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
+                    fullUpload
+                fi
+            elif [[ ${HTTP_CODE} =~ 40* ]]; then
+                [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
+                fullUpload
+            elif [[ ${HTTP_CODE} =~ [200,201] ]]; then
+                UPLOAD_BODY="${HTTP_CODE}"
+                collectFileInfo
+                normalLogging
+                removeUploadSession
+            fi
+        else
+            # Curl command to initiate resumable upload session and grab the location URL
+            [[ -z ${PARALLEL} ]] && printCenter "justify" "Generating upload link.." "-"
             fullUpload
-        elif [[ $HTTP_CODE =~ [200,201] ]]; then
-            UPLOAD_BODY="$HTTP_CODE"
-            collectFileInfo
-            normalLogging
-            removeUploadSession
         fi
-    else
-        # Curl command to initiate resumable upload session and grab the location URL
-        [[ -z $PARALLEL ]] && printCenter "justify" "Generating upload link.." "-"
-        fullUpload
     fi
 }
 
@@ -535,15 +557,15 @@ uploadFile() {
 # Requirements: Given file/folder ID, type, role and access_token.
 shareID() {
     [[ $# -lt 2 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare LC_ALL=C ID="$1" TOKEN="$2" SHARE_EMAIL="$3" ROLE="reader"
+    declare LC_ALL=C ID="${1}" TOKEN="${2}" SHARE_EMAIL="${3}" ROLE="reader"
     declare TYPE SHARE_POST_DATA SHARE_POST_DATA SHARE_RESPONSE SHARE_ID
 
-    if [[ -n $SHARE_EMAIL ]]; then
+    if [[ -n ${SHARE_EMAIL} ]]; then
         TYPE="user"
-        SHARE_POST_DATA="{\"role\":\"$ROLE\",\"type\":\"$TYPE\",\"emailAddress\":\"$SHARE_EMAIL\"}"
+        SHARE_POST_DATA="{\"role\":\"${ROLE}\",\"type\":\"${TYPE}\",\"emailAddress\":\"${SHARE_EMAIL}\"}"
     else
         TYPE="anyone"
-        SHARE_POST_DATA="{\"role\":\"$ROLE\",\"type\":\"$TYPE\"}"
+        SHARE_POST_DATA="{\"role\":\"${ROLE}\",\"type\":\"${TYPE}\"}"
     fi
     SHARE_RESPONSE="$(curl \
         --compressed \
@@ -552,11 +574,11 @@ shareID() {
         -X POST \
         -H "Authorization: Bearer ${TOKEN}" \
         -H "Content-Type: application/json; charset=UTF-8" \
-        -d "$SHARE_POST_DATA" \
-        """$API_URL""/drive/""$API_VERSION""/files/""$ID""/permissions")"
+        -d "${SHARE_POST_DATA}" \
+        "${API_URL}/drive/${API_VERSION}/files/${ID}/permissions")"
 
-    SHARE_ID="$(jsonValue id 1 <<< "$SHARE_RESPONSE")"
-    [[ -z "$SHARE_ID" ]] && jsonValue message 1 <<< "$SHARE_RESPONSE" && return 1
+    SHARE_ID="$(jsonValue id 1 <<< "${SHARE_RESPONSE}")"
+    [[ -z "${SHARE_ID}" ]] && jsonValue message 1 <<< "${SHARE_RESPONSE}" && return 1
 }
 
 # Setup the varibles and process getopts flags.
@@ -565,28 +587,29 @@ setupArguments() {
     # Internal variables
     # De-initialize if any variables set already.
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_INPUT_ARRAY INPUT_ARRAY
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_SUBDIRS CONFIG ROOTDIR QUIET
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS CONFIG ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
     CURL_ARGS="-#"
 
-    # Grab the first and second argument and shift, only if $1 doesn't contain -.
-    { ! [[ $1 = -* ]] && INPUT_ARRAY+=("$1") && shift && [[ $1 != -* ]] && FOLDER_INPUT="$1" && shift; } || :
+    # Grab the first and second argument and shift, only if ${1} doesn't contain -.
+    { ! [[ ${1} = -* ]] && INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
 
     # Configuration variables # Remote gDrive variables
     unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
     API_URL="https://www.googleapis.com"
     API_VERSION="v3"
-    SCOPE="""$API_URL""/auth/drive"
+    SCOPE="${API_URL}/auth/drive"
     REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-    SHORTOPTS=":qvVi:sp:of:Shur:C:Dz:-:"
+    SHORTOPTS=":qvVi:sp:odf:Shur:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
-        case "$OPTION" in
+        case "${OPTION}" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
             -)
-                checkLongoptions() { { [[ -n ${!OPTIND} ]] && printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1; } || :; }
-                case "$OPTARG" in
+                checkLongoptions() { { [[ -n ${!OPTIND} ]] &&
+                    printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1; } || :; }
+                case "${OPTARG}" in
                     help)
                         usage
                         ;;
@@ -610,7 +633,8 @@ setupArguments() {
                         checkLongoptions
                         CONFIG="${!OPTIND}" && OPTIND=$((OPTIND + 1))
                         # shellcheck source=/dev/null
-                        [[ -n $CONFIG && -f $CONFIG ]] && source "$CONFIG" || printf "Warning: Given config file (%s) doesn't exist, will use existing config or prompt for credentials..\n" "$OPTARG"
+                        [[ -n ${CONFIG} && -f ${CONFIG} ]] &&
+                            source "${CONFIG}" || printf "Warning: Given config file (%s) doesn't exist, will use existing config or prompt for credentials..\n" "${OPTARG}"
                         ;;
                     save-info)
                         checkLongoptions
@@ -622,19 +646,22 @@ setupArguments() {
                     parallel)
                         checkLongoptions
                         NO_OF_PARALLEL_JOBS="${!OPTIND}"
-                        case "$NO_OF_PARALLEL_JOBS" in
+                        case "${NO_OF_PARALLEL_JOBS}" in
                             '' | *[!0-9]*)
                                 printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
                                 exit 1
                                 ;;
                             *)
-                                [[ $NO_OF_PARALLEL_JOBS -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="${!OPTIND}"; }
+                                [[ ${NO_OF_PARALLEL_JOBS} -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="${!OPTIND}"; }
                                 ;;
                         esac
                         PARALLEL_UPLOAD=true && OPTIND=$((OPTIND + 1))
                         ;;
                     overwrite)
-                        OVERWRITE=true
+                        OVERWRITE=Overwrite
+                        ;;
+                    skip-duplicates)
+                        SKIP_DUPLICATES=true
                         ;;
                     file | folder)
                         checkLongoptions
@@ -643,7 +670,7 @@ setupArguments() {
                     share)
                         SHARE=true
                         if [[ -n ${!OPTIND} && ! ${!OPTIND} =~ ^(\-|\-\-) ]]; then
-                            SHARE_EMAIL="${!OPTIND}" && ! [[ $SHARE_EMAIL =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
+                            SHARE_EMAIL="${!OPTIND}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
                             OPTIND=$((OPTIND + 1))
                         fi
                         ;;
@@ -665,7 +692,7 @@ setupArguments() {
                         shorthelp
                         ;;
                     *)
-                        printf '%s: --%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1
+                        printf '%s: --%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
                         ;;
                 esac
                 ;;
@@ -677,47 +704,51 @@ setupArguments() {
                 exit $?
                 ;;
             C)
-                FOLDERNAME="$OPTARG"
+                FOLDERNAME="${OPTARG}"
                 ;;
             r)
-                ROOTDIR="$OPTARG"
+                ROOTDIR="${OPTARG}"
                 ;;
             z)
-                CONFIG="$OPTARG"
+                CONFIG="${OPTARG}"
                 # shellcheck source=/dev/null
-                [[ -n $CONFIG && -f $CONFIG ]] && source "$CONFIG" || printf "Warning: Given config file (%s) doesn't exist, will use existing config or prompt for credentials..\n" "$OPTARG"
+                [[ -n ${CONFIG} && -f ${CONFIG} ]] &&
+                    source "${CONFIG}" || printf "Warning: Given config file (%s) doesn't exist, will use existing config or prompt for credentials..\n" "${OPTARG}"
                 ;;
             i)
-                LOG_FILE_ID="$OPTARG"
+                LOG_FILE_ID="${OPTARG}"
                 ;;
             s)
                 SKIP_SUBDIRS=true
                 ;;
             p)
-                NO_OF_PARALLEL_JOBS="$OPTARG"
-                case "$NO_OF_PARALLEL_JOBS" in
+                NO_OF_PARALLEL_JOBS="${OPTARG}"
+                case "${NO_OF_PARALLEL_JOBS}" in
                     '' | *[!0-9]*)
                         printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
                         exit 1
                         ;;
                     *)
-                        [[ $NO_OF_PARALLEL_JOBS -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="$OPTARG"; }
+                        [[ ${NO_OF_PARALLEL_JOBS} -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="${OPTARG}"; }
                         ;;
                 esac
                 PARALLEL_UPLOAD=true
                 ;;
             o)
-                OVERWRITE=true
+                OVERWRITE=Overwrite
+                ;;
+            d)
+                SKIP_DUPLICATES="Skip Existing"
                 ;;
             f)
-                INPUT_ARRAY+=("$OPTARG")
+                INPUT_ARRAY+=("${OPTARG}")
                 ;;
             S)
                 # https://stackoverflow.com/a/57295993
                 # Optional arguments # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
                 EMAIL_REGEX="^([A-Za-z]+[A-Za-z0-9]*\+?((\.|\-|\_)?[A-Za-z]+[A-Za-z0-9]*)*)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
                 if [[ -n ${!OPTIND} && ! ${!OPTIND} =~ ^(\-|\-\-) ]]; then
-                    SHARE_EMAIL="${!OPTIND}" && ! [[ $SHARE_EMAIL =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
+                    SHARE_EMAIL="${!OPTIND}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
                     OPTIND=$((OPTIND + 1))
                 fi
                 SHARE=true
@@ -737,28 +768,28 @@ setupArguments() {
                 DEBUG=true
                 ;;
             :)
-                printf '%s: -%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1
+                printf '%s: -%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
                 ;;
             ?)
-                printf '%s: -%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "$OPTARG" "${0##*/}" && exit 1
+                printf '%s: -%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
                 ;;
         esac
     done
     shift $((OPTIND - 1))
 
-    # Incase $1 argument was not taken as input, check if any arguments after all the valid flags have been passed, for INPUT and FOLDERNAME.
+    # Incase ${1} argument was not taken as input, check if any arguments after all the valid flags have been passed, for INPUT and FOLDERNAME.
     # Also check, if folder or dir, else exit.
     if [[ -z ${INPUT_ARRAY[*]} ]]; then
-        if [[ -n $1 && -f $1 || -d $1 ]]; then
-            FINAL_INPUT_ARRAY+=("$1")
-            { [[ -n $2 && $2 != -* ]] && FOLDER_INPUT="$2"; } || :
-        elif [[ -z $FOLDERNAME ]]; then
+        if [[ -n ${1} && -f ${1} || -d ${1} ]]; then
+            FINAL_INPUT_ARRAY+=("${1}")
+            { [[ -n ${2} && ${2} != -* ]] && FOLDER_INPUT="${2}"; } || :
+        elif [[ -z ${FOLDERNAME} ]]; then
             shortHelp
         fi
     else
         for array in "${INPUT_ARRAY[@]}"; do
-            { [[ -f $array || -d $array ]] && FINAL_INPUT_ARRAY+=("${array[@]}"); } || {
-                printf "\nError: Invalid Input ( %s ), no such file or directory.\n\n" "$array"
+            { [[ -f ${array} || -d ${array} ]] && FINAL_INPUT_ARRAY+=("${array[@]}"); } || {
+                printf "\nError: Invalid Input ( %s ), no such file or directory.\n\n" "${array}"
                 exit 1
             }
         done
@@ -766,34 +797,34 @@ setupArguments() {
     mapfile -t FINAL_INPUT_ARRAY <<< "$(removeArrayDuplicates "${FINAL_INPUT_ARRAY[@]}")"
 
     # Get foldername, prioritise the input given by -C/--create-dir option.
-    { [[ -n $FOLDER_INPUT && -z $FOLDERNAME ]] && FOLDERNAME="${FOLDER_INPUT}"; } || :
+    { [[ -n ${FOLDER_INPUT} && -z ${FOLDERNAME} ]] && FOLDERNAME="${FOLDER_INPUT}"; } || :
 
-    { [[ -n $VERBOSE_PROGRESS && -n $VERBOSE ]] && unset "$VERBOSE"; } || :
+    { [[ -n ${VERBOSE_PROGRESS} && -n ${VERBOSE} ]] && unset "${VERBOSE}"; } || :
 }
 
 # To avoid spamming in debug mode.
 checkDebug() {
-    printCenterQuiet() { printf "%s\n" "$1"; }
-    if [[ -n $DEBUG ]]; then
+    printCenterQuiet() { printf "%s\n" "${1}"; }
+    if [[ -n ${DEBUG} ]]; then
         set -x
-        printCenter() { { [[ $# = 3 ]] && printf "%s\n" "$2"; } || { printf "%s%s\n" "$2" "$3"; }; }
+        printCenter() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         clearLine() { :; } && newLine() { :; }
     else
         set +x
         if isNotQuiet; then
             if isTerminal; then
-                # This refreshes the interactive shell so we can use the $COLUMNS variable in the printCenter function.
+                # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the printCenter function.
                 shopt -s checkwinsize && (: && :)
-                if [[ $COLUMNS -lt 40 ]]; then
-                    printCenter() { { [[ $# = 3 ]] && printf "%s\n" "[ $2 ]"; } || { printf "%s\n" "[ $2$3 ]"; }; }
+                if [[ ${COLUMNS} -lt 40 ]]; then
+                    printCenter() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 else
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
                 fi
             else
-                printCenter() { { [[ $# = 3 ]] && printf "%s\n" "[ $2 ]"; } || { printf "%s\n" "[ $2$3 ]"; }; }
+                printCenter() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 clearLine() { :; }
             fi
-            newLine() { printf "%b" "$1"; }
+            newLine() { printf "%b" "${1}"; }
         else
             printCenter() { :; } && clearLine() { :; } && newLine() { :; }
         fi
@@ -821,45 +852,46 @@ checkInternet() {
 
 # Set the path and random name for temp file ( used for showing parallel uploads progress ).
 setupTempfile() {
-    type -p mktemp > /dev/null && { TMPFILE="$(mktemp -u)" || TMPFILE="$PWD/$((RANDOM * 2)).LOG"; }
-    trap '[[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS ; [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR' EXIT
+    type -p mktemp > /dev/null && { TMPFILE="$(mktemp -u)" || TMPFILE="${PWD}/$((RANDOM * 2)).LOG"; }
+    trap '[[ -f "${TMPFILE}"SUCCESS ]] && rm "${TMPFILE}"SUCCESS ; [[ -f "${TMPFILE}"ERROR ]] && rm "${TMPFILE}"ERROR' EXIT
 }
 
 # Credentials
 checkCredentials() {
     # shellcheck source=/dev/null
     # Config file is created automatically after first run
-    [[ -f $HOME/.googledrive.conf ]] && source "$HOME"/.googledrive.conf
+    [[ -f ${HOME}/.googledrive.conf ]] && source "${HOME}"/.googledrive.conf
 
-    [[ -z $CLIENT_ID ]] && read -r -p "Client ID: " CLIENT_ID && {
-        updateConfig CLIENT_ID "$CLIENT_ID" "$HOME"/.googledrive.conf
+    [[ -z ${CLIENT_ID} ]] && read -r -p "Client ID: " CLIENT_ID && {
+        updateConfig CLIENT_ID "${CLIENT_ID}" "${HOME}"/.googledrive.conf
     }
 
-    [[ -z $CLIENT_SECRET ]] && read -r -p "Client Secret: " CLIENT_SECRET && {
-        updateConfig CLIENT_SECRET "$CLIENT_SECRET" "$HOME"/.googledrive.conf
+    [[ -z ${CLIENT_SECRET} ]] && read -r -p "Client Secret: " CLIENT_SECRET && {
+        updateConfig CLIENT_SECRET "${CLIENT_SECRET}" "${HOME}"/.googledrive.conf
     }
 
     # Method to obtain refresh_token.
     # Requirements: client_id, client_secret and authorization code.
-    if [[ -z $REFRESH_TOKEN ]]; then
+    if [[ -z ${REFRESH_TOKEN} ]]; then
         read -r -p "If you have a refresh token generated, then type the token, else leave blank and press return key..
     Refresh Token: " REFRESH_TOKEN && REFRESH_TOKEN="${REFRESH_TOKEN//[[:space:]]/}"
-        if [[ -n $REFRESH_TOKEN ]]; then
-            updateConfig REFRESH_TOKEN "$REFRESH_TOKEN" "$HOME"/.googledrive.conf
+        if [[ -n ${REFRESH_TOKEN} ]]; then
+            updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${HOME}"/.googledrive.conf
         else
             printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
-            URL="https://accounts.google.com/o/oauth2/auth?client_id=$CLIENT_ID&redirect_uri=$REDIRECT_URI&scope=$SCOPE&response_type=code&prompt=consent"
-            printf "%s\n\n" "$URL"
+            URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
+            printf "%s\n\n" "${URL}"
             read -r -p "Enter the authorization code: " CODE
             CODE="${CODE//[[:space:]]/}"
-            if [[ -n $CODE ]]; then
-                RESPONSE="$(curl --compressed -s -X POST --data "code=$CODE&client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&redirect_uri=$REDIRECT_URI&grant_type=authorization_code" "$TOKEN_URL")"
+            if [[ -n ${CODE} ]]; then
+                RESPONSE="$(curl --compressed -s -X POST \
+                    --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")"
 
-                ACCESS_TOKEN="$(jsonValue access_token <<< "$RESPONSE")"
-                REFRESH_TOKEN="$(jsonValue refresh_token <<< "$RESPONSE")"
+                ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
+                REFRESH_TOKEN="$(jsonValue refresh_token <<< "${RESPONSE}")"
 
-                updateConfig REFRESH_TOKEN "$REFRESH_TOKEN" "$HOME"/.googledrive.conf
-                updateConfig ACCESS_TOKEN "$ACCESS_TOKEN" "$HOME"/.googledrive.conf
+                updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${HOME}"/.googledrive.conf
+                updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${HOME}"/.googledrive.conf
             else
                 printf "\n"
                 printCenter "normal" "No code provided, run the script and try again" " "
@@ -869,84 +901,85 @@ checkCredentials() {
     fi
 
     # Method to regenerate access_token.
-    # Make a request on https://www.googleapis.com/oauth2/""$API_VERSION""/tokeninfo?access_token=$ACCESS_TOKEN url and check if the given token is valid, if not generate one.
+    # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
     # Requirements: Refresh Token
-    if [[ -z $ACCESS_TOKEN ]]; then
-        RESPONSE="$(curl --compressed -s -X POST --data "client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&refresh_token=$REFRESH_TOKEN&grant_type=refresh_token" "$TOKEN_URL")"
-        ACCESS_TOKEN="$(jsonValue access_token <<< "$RESPONSE")"
-        updateConfig ACCESS_TOKEN "$ACCESS_TOKEN" "$HOME"/.googledrive.conf
-    elif curl --compressed -s """$API_URL""/oauth2/""$API_VERSION""/tokeninfo?access_token=$ACCESS_TOKEN" | jsonValue error_description > /dev/null 2>&1; then
-        RESPONSE="$(curl --compressed -s -X POST --data "client_id=$CLIENT_ID&client_secret=$CLIENT_SECRET&refresh_token=$REFRESH_TOKEN&grant_type=refresh_token" "$TOKEN_URL")"
-        ACCESS_TOKEN="$(jsonValue access_token <<< "$RESPONSE")"
-        updateConfig ACCESS_TOKEN "$ACCESS_TOKEN" "$HOME"/.googledrive.conf
+    if [[ -z ${ACCESS_TOKEN} ]]; then
+        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
+        ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
+        updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${HOME}"/.googledrive.conf
+    elif curl --compressed -s "${API_URL}/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN}" | jsonValue error_description > /dev/null 2>&1; then
+        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
+        ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
+        updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${HOME}"/.googledrive.conf
     fi
 }
 
 # Setup root directory where all file/folders will be uploaded.
 setupRootdir() {
-    if [[ -n $ROOTDIR ]]; then
+    if [[ -n ${ROOTDIR} ]]; then
         ROOT_FOLDER="${ROOTDIR//[[:space:]]/}"
-        if [[ -n $ROOT_FOLDER ]]; then
-            ROOT_FOLDER="$(driveInfo "$(extractID "$ROOT_FOLDER")" "id" "$ACCESS_TOKEN")" || {
-                { [[ $ROOT_FOLDER =~ "File not found" ]] && printCenter "justify" "Given root folder " " ID/URL invalid." "="; } || { printf "%s\n" "$ROOT_FOLDER"; }
+        if [[ -n ${ROOT_FOLDER} ]]; then
+            ROOT_FOLDER="$(driveInfo "$(extractID "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")" || {
+                { [[ ${ROOT_FOLDER} =~ "File not found" ]] && printCenter "justify" "Given root folder " " ID/URL invalid." "="; } || { printf "%s\n" "${ROOT_FOLDER}"; }
                 exit 1
             }
-            if [[ -n $ROOT_FOLDER ]]; then
-                updateConfig ROOT_FOLDER "$ROOT_FOLDER" "$HOME"/.googledrive.conf
+            if [[ -n ${ROOT_FOLDER} ]]; then
+                updateConfig ROOT_FOLDER "${ROOT_FOLDER}" "${HOME}"/.googledrive.conf
             else
                 printCenter "justify" "Given root folder " " ID/URL invalid." "="
                 exit 1
             fi
         fi
-    elif [[ -z $ROOT_FOLDER ]]; then
+    elif [[ -z ${ROOT_FOLDER} ]]; then
         read -r -p "Root Folder ID or URL (Default: root): " ROOT_FOLDER
         ROOT_FOLDER="${ROOT_FOLDER//[[:space:]]/}"
-        if [[ -n $ROOT_FOLDER ]]; then
-            ROOT_FOLDER="$(driveInfo "$(extractID "$ROOT_FOLDER")" "id" "$ACCESS_TOKEN")" || {
-                { [[ $ROOT_FOLDER =~ "File not found" ]] && printCenter "justify" "Given root folder " " ID/URL invalid." "="; } || { printf "%s\n" "$ROOT_FOLDER"; }
+        if [[ -n ${ROOT_FOLDER} ]]; then
+            ROOT_FOLDER="$(driveInfo "$(extractID "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")" || {
+                { [[ ${ROOT_FOLDER} =~ "File not found" ]] && printCenter "justify" "Given root folder " " ID/URL invalid." "="; } || { printf "%s\n" "${ROOT_FOLDER}"; }
                 exit 1
             }
-            if [[ -n $ROOT_FOLDER ]]; then
-                updateConfig ROOT_FOLDER "$ROOT_FOLDER" "$HOME"/.googledrive.conf
+            if [[ -n ${ROOT_FOLDER} ]]; then
+                updateConfig ROOT_FOLDER "${ROOT_FOLDER}" "${HOME}"/.googledrive.conf
             else
                 printCenter "justify" "Given root folder " " ID/URL invalid." "="
                 exit 1
             fi
         else
             ROOT_FOLDER=root
-            updateConfig ROOT_FOLDER "$ROOT_FOLDER" "$HOME"/.googledrive.conf
+            updateConfig ROOT_FOLDER "${ROOT_FOLDER}" "${HOME}"/.googledrive.conf
         fi
     fi
 }
 
 # Check to find whether the folder exists in google drive. If not then the folder is created in google drive under the configured root folder.
 setupWorkspace() {
-    if [[ -z $FOLDERNAME ]]; then
-        WORKSPACE_FOLDER_ID="$ROOT_FOLDER"
+    if [[ -z ${FOLDERNAME} ]]; then
+        WORKSPACE_FOLDER_ID="${ROOT_FOLDER}"
     else
-        WORKSPACE_FOLDER_ID="$(createDirectory "$FOLDERNAME" "$ROOT_FOLDER" "$ACCESS_TOKEN")"
+        WORKSPACE_FOLDER_ID="$(createDirectory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")"
     fi
-    WORKSPACE_FOLDER_NAME="$(driveInfo """$WORKSPACE_FOLDER_ID""" name """$ACCESS_TOKEN""")"
+    WORKSPACE_FOLDER_NAME="$(driveInfo "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}")"
 }
 
 # Loop through all the input.
 processArguments() {
     for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
         # Check if the argument is a file or a directory.
-        if [[ -f $INPUT ]]; then
+        if [[ -f ${INPUT} ]]; then
             printCenter "justify" "Given Input" ": FILE" "="
-            if [[ -n $OVERWRITE ]]; then
-                printCenter "justify" "Upload Method" ": Overwrite" "-" && newLine "\n"
-                uploadFile update "$INPUT" "$WORKSPACE_FOLDER_ID" "$ACCESS_TOKEN"
+            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
+                printCenter "justify" "Upload Method" ": ${SKIP_DUPLICATES:-$OVERWRITE}" "-" && newLine "\n"
+                uploadFile update "${INPUT}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}"
             else
                 printCenter "justify" "Upload Method" ": Create" "-" && newLine "\n"
-                uploadFile create "$INPUT" "$WORKSPACE_FOLDER_ID" "$ACCESS_TOKEN"
+                uploadFile create "${INPUT}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}"
             fi
-            [[ $UPLOAD_STATUS = ERROR ]] && for _ in {1..2}; do clearLine 1; done && return 1
-            if [[ -n "$SHARE" ]]; then
+            FILE_ID="${SKIP_DUPLICATES_FILE_ID:-${FILE_ID}}"
+            [[ ${UPLOAD_STATUS} = ERROR ]] && for _ in {1..2}; do clearLine 1; done && return 1
+            if [[ -n "${SHARE}" ]]; then
                 printCenter "justify" "Sharing the file.." "-"
-                if SHARE_MSG="$(shareID "$FILE_ID" "$ACCESS_TOKEN" "$SHARE_EMAIL")"; then
-                    printf "%s\n" "$SHARE_MSG"
+                if SHARE_MSG="$(shareID "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
+                    printf "%s\n" "${SHARE_MSG}"
                 else
                     clearLine 1
                 fi
@@ -955,96 +988,92 @@ processArguments() {
                 printCenter "justify" "DriveLink" "-"
             fi
             isTerminal && printCenter "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-            printCenter "normal" "$FILE_LINK" " "
+            printCenter "normal" "${FILE_LINK}" " "
             printf "\n"
-        elif [[ -d $INPUT ]]; then
+        elif [[ -d ${INPUT} ]]; then
             unset EMPTY
             # Unset PARALLEL value if input is file, for preserving the logging output.
-            [[ -n $PARALLEL_UPLOAD ]] && { parallel=true || unset parallel; }
+            [[ -n ${PARALLEL_UPLOAD} ]] && { parallel=true || unset parallel; }
 
             FOLDER_NAME="${INPUT##*/}"
 
-            if [[ -n $OVERWRITE ]]; then
-                printCenter "justify" "Upload Method" ": Overwrite" "="
-            else
-                printCenter "justify" "Upload Method" ": Create" "="
-            fi
+            printCenter "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "="
 
             printCenter "justify" "Given Input" ": FOLDER" "-" && newLine "\n"
-            printCenter "justify" "Folder: $FOLDER_NAME" "="
+            printCenter "justify" "Folder: ${FOLDER_NAME}" "="
 
-            NEXTROOTDIRID="$WORKSPACE_FOLDER_ID"
+            NEXTROOTDIRID="${WORKSPACE_FOLDER_ID}"
 
             # Skip the sub folders and find recursively all the files and upload them.
-            if [[ -n $SKIP_SUBDIRS ]]; then
+            if [[ -n ${SKIP_SUBDIRS} ]]; then
                 printCenter "justify" "Indexing files recursively.." "-"
-                mapfile -t FILENAMES <<< "$(find "$INPUT" -type f)"
+                mapfile -t FILENAMES <<< "$(find "${INPUT}" -type f)"
                 if [[ -n ${FILENAMES[0]} ]]; then
                     NO_OF_FILES="${#FILENAMES[@]}"
                     for _ in {1..2}; do clearLine 1; done
                     if isNotQuiet; then
-                        printCenter "justify" "Folder: $FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "=" && printf "\n"
+                        printCenter "justify" "Folder: ${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "=" && printf "\n"
                     else
-                        printCenterQuiet "[ Folder: $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]"
+                        printCenterQuiet "[ Folder: ${FOLDER_NAME} | ${NO_OF_FILES} File(s) ]"
                     fi
-                    ID="$(createDirectory "$INPUT" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
-                    DIRIDS[1]="$ID"
-                    if [[ -n $parallel ]]; then
-                        { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
+                    ID="$(createDirectory "${INPUT}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")"
+                    DIRIDS[1]="${ID}"
+                    if [[ -n ${parallel} ]]; then
+                        { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID
+                        export ID CURL_ARGS="-s" PARALLEL ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES
                         export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet
 
-                        [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
-                        [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
+                        [[ -f ${TMPFILE}SUCCESS ]] && rm "${TMPFILE}"SUCCESS
+                        [[ -f ${TMPFILE}ERROR ]] && rm "${TMPFILE}"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "${FILENAMES[@]}" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
-            if [[ -n $OVERWRITE ]]; then
-        uploadFile update "{}" "$ID" "$ACCESS_TOKEN" parallel
+                        printf "%s\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
+        uploadFile update "{}" "${ID}" "${ACCESS_TOKEN}" parallel
             else
-        uploadFile create "{}" "$ID" "$ACCESS_TOKEN" parallel
+        uploadFile create "{}" "${ID}" "${ACCESS_TOKEN}" parallel
             fi
-            ' 1>| "$TMPFILE"SUCCESS 2>| "$TMPFILE"ERROR &
+            ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
-                        while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
+                        while true; do [[ -f "${TMPFILE}"SUCCESS || -f "${TMPFILE}"ERROR ]] && { break || bashSleep 0.5; }; done
                         newLine "\n"
                         ERROR_STATUS=0 SUCCESS_STATUS=0
                         while true; do
-                            SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
-                            ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
+                            SUCCESS_STATUS="$(count < "${TMPFILE}"SUCCESS)"
+                            ERROR_STATUS="$(count < "${TMPFILE}"ERROR)"
                             bashSleep 1
                             if isNotQuiet; then
-                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                    clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
+                                    clearLine 1 && printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                                 fi
                             else
-                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                    clearLine 1 && printCenterQuiet "Status: ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED"
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
+                                    clearLine 1 && printCenterQuiet "Status: ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed"
                                 fi
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                            [[ $TOTAL = "$NO_OF_FILES" ]] && break
+                            [[ ${TOTAL} = "${NO_OF_FILES}" ]] && break
                         done
                         for _ in {1..2}; do clearLine 1; done
-                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n\n"
+                        [[ -z ${VERBOSE} && -z ${VERBOSE_PROGRESS} ]] && newLine "\n\n"
                     else
-                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n"
+                        [[ -z ${VERBOSE} && -z ${VERBOSE_PROGRESS} ]] && newLine "\n"
 
                         ERROR_STATUS=0 SUCCESS_STATUS=0
                         for file in "${FILENAMES[@]}"; do
-                            DIRTOUPLOAD="$ID"
-                            if [[ -n $OVERWRITE ]]; then
-                                uploadFile update "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                            DIRTOUPLOAD="${ID}"
+                            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
+                                uploadFile update "${file}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             else
-                                uploadFile create "$file" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                                uploadFile create "${file}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             fi
-                            [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
-                            if [[ $VERBOSE = true || $VERBOSE_PROGRESS = true ]]; then
-                                printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "=" && newLine "\n"
+                            [[ ${UPLOAD_STATUS} = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
+                            if [[ ${VERBOSE} = true || ${VERBOSE_PROGRESS} = true ]]; then
+                                printCenter "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "=" && newLine "\n"
                             else
                                 for _ in {1..2}; do clearLine 1; done
-                                printCenter "justify" "Status: ""$SUCCESS_STATUS "" UPLOADED " "| ""$ERROR_STATUS"" FAILED" "="
+                                printCenter "justify" "Status: ${SUCCESS_STATUS} Uploaded" " | ${ERROR_STATUS} Failed" "="
 
                             fi
                         done
@@ -1055,55 +1084,55 @@ processArguments() {
             else
                 printCenter "justify" "Indexing files/sub-folders" " recursively.." "-"
                 # Do not create empty folders during a recursive upload. Use of find in this section is important.
-                mapfile -t DIRNAMES <<< "$(find "$INPUT" -type d -not -empty)"
+                mapfile -t DIRNAMES <<< "$(find "${INPUT}" -type d -not -empty)"
                 NO_OF_FOLDERS="${#DIRNAMES[@]}" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
                 # Create a loop and make folders according to list made above.
-                if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
+                if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
                     clearLine 1
-                    printCenter "justify" """$NO_OF_SUB_FOLDERS"" Sub-folders found" "="
+                    printCenter "justify" "${NO_OF_SUB_FOLDERS} Sub-folders found." "="
                 fi
                 printCenter "justify" "Indexing files.." "="
-                mapfile -t FILENAMES <<< "$(find "$INPUT" -type f)"
+                mapfile -t FILENAMES <<< "$(find "${INPUT}" -type f)"
                 if [[ -n ${FILENAMES[0]} ]]; then
                     NO_OF_FILES="${#FILENAMES[@]}"
                     for _ in {1..3}; do clearLine 1; done
                     if isNotQuiet; then
-                        if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                            printCenter "justify" "$FOLDER_NAME " "| ""$NO_OF_FILES"" File(s) | ""$NO_OF_SUB_FOLDERS"" Sub-folders" "="
+                        if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
+                            printCenter "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders" "="
                         else
-                            printCenter "justify" "$FOLDER_NAME " "| ""$NO_OF_FILES"" File(s)" "="
+                            printCenter "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "="
                         fi
                     else
-                        if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
-                            printCenterQuiet "[ $FOLDER_NAME | ""$NO_OF_FILES"" File(s) | ""$NO_OF_SUB_FOLDERS"" Sub-folders ]"
+                        if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
+                            printCenterQuiet "[ ${FOLDER_NAME} | ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders ]"
                         else
-                            printCenterQuiet "[ $FOLDER_NAME | ""$NO_OF_FILES"" File(s) ]"
+                            printCenterQuiet "[ ${FOLDER_NAME} | ${NO_OF_FILES} File(s) ]"
                         fi
                     fi
                     newLine "\n"
                     printCenter "justify" "Creating Folder(s).." "-"
-                    { [[ $NO_OF_SUB_FOLDERS != 0 ]] && newLine "\n"; } || :
+                    { [[ ${NO_OF_SUB_FOLDERS} != 0 ]] && newLine "\n"; } || :
 
                     unset status DIRIDS
                     for dir in "${DIRNAMES[@]}"; do
-                        if [[ -n $status ]]; then
-                            __dir="$(dirname "$dir")"
+                        if [[ -n ${status} ]]; then
+                            __dir="$(dirname "${dir}")"
                             __temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__dir}|:_//_:|")"
                             NEXTROOTDIRID="$(printf "%s\n" "${__temp//"|:_//_:|"${__dir}*/}")"
                         fi
                         NEWDIR="${dir##*/}"
-                        [[ $NO_OF_SUB_FOLDERS != 0 ]] && printCenter "justify" "Name: ""$NEWDIR""" "-"
-                        ID="$(createDirectory "$NEWDIR" "$NEXTROOTDIRID" "$ACCESS_TOKEN")"
+                        [[ ${NO_OF_SUB_FOLDERS} != 0 ]] && printCenter "justify" "Name: ${NEWDIR}" "-"
+                        ID="$(createDirectory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")"
                         # Store sub-folder directory IDs and it's path for later use.
                         ((status += 1))
-                        DIRIDS[$status]="$(printf "%s|:_//_:|%s|:_//_:|\n" "$ID" "$dir" && printf "\n")"
-                        if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
+                        DIRIDS[${status}]="$(printf "%s|:_//_:|%s|:_//_:|\n" "${ID}" "${dir}" && printf "\n")"
+                        if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
                             for _ in {1..2}; do clearLine 1; done
-                            printCenter "justify" "Status" ": ""$status"" / ""$NO_OF_FOLDERS""" "="
+                            printCenter "justify" "Status" ": ${status} / ${NO_OF_FOLDERS}" "="
                         fi
                     done
 
-                    if [[ $NO_OF_SUB_FOLDERS != 0 ]]; then
+                    if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
                         for _ in {1..2}; do clearLine 1; done
                     else
                         clearLine 1
@@ -1112,71 +1141,72 @@ processArguments() {
 
                     unset status
                     for file in "${FILENAMES[@]}"; do
-                        __rootdir="$(dirname "$file")"
+                        __rootdir="$(dirname "${file}")"
                         ((status += 1))
-                        FINAL_LIST[$status]="$(printf "%s\n" "$__rootdir|:_//_:|$(__temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__rootdir}|:_//_:|")" && printf "%s\n" "${__temp//"|:_//_:|"$__rootdir*/}")|:_//_:|$file")"
+                        FINAL_LIST[${status}]="$(printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__rootdir}|:_//_:|")" &&
+                            printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}")"
                     done
 
-                    if [[ -n $parallel ]]; then
-                        { [[ $NO_OF_PARALLEL_JOBS -gt $NO_OF_FILES ]] && NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_FILES"; } || { NO_OF_PARALLEL_JOBS_FINAL="$NO_OF_PARALLEL_JOBS"; }
+                    if [[ -n ${parallel} ]]; then
+                        { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
                         export CURL_ARGS="-s" ACCESS_TOKEN STRING OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID QUIET
                         export -f uploadFile printCenter clearLine jsonValue urlEncode checkExistingFile isNotQuiet printCenterQuiet newLine
 
-                        [[ -f "$TMPFILE"SUCCESS ]] && rm "$TMPFILE"SUCCESS
-                        [[ -f "$TMPFILE"ERROR ]] && rm "$TMPFILE"ERROR
+                        [[ -f "${TMPFILE}"SUCCESS ]] && rm "${TMPFILE}"SUCCESS
+                        [[ -f "${TMPFILE}"ERROR ]] && rm "${TMPFILE}"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "${FINAL_LIST[@]}" | xargs -n1 -P"$NO_OF_PARALLEL_JOBS_FINAL" -i bash -c '
+                        printf "%s\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
             LIST="{}"
             FILETOUPLOAD="${LIST//*"|:_//_:|"}"
-            DIRTOUPLOAD="$(: "|:_//_:|""$FILETOUPLOAD" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
-            if [[ -n $OVERWRITE ]]; then
-        uploadFile update "$FILETOUPLOAD" "$DIRTOUPLOAD" "$ACCESS_TOKEN" parallel
+            DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
+            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
+        uploadFile update "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}" parallel
             else
-        uploadFile create "$FILETOUPLOAD" "$DIRTOUPLOAD" "$ACCESS_TOKEN" parallel
+        uploadFile create "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}" parallel
             fi
-            ' 1>| "$TMPFILE"SUCCESS 2>| "$TMPFILE"ERROR &
+            ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
-                        while true; do [[ -f "$TMPFILE"SUCCESS || -f "$TMPFILE"ERROR ]] && { break || bashSleep 0.5; }; done
+                        while true; do [[ -f "${TMPFILE}"SUCCESS || -f "${TMPFILE}"ERROR ]] && { break || bashSleep 0.5; }; done
 
                         clearLine 1 && newLine "\n"
                         while true; do
-                            SUCCESS_STATUS="$(count < "$TMPFILE"SUCCESS)"
-                            ERROR_STATUS="$(count < "$TMPFILE"ERROR)"
+                            SUCCESS_STATUS="$(count < "${TMPFILE}"SUCCESS)"
+                            ERROR_STATUS="$(count < "${TMPFILE}"ERROR)"
                             bashSleep 1
                             if isNotQuiet; then
-                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                    clearLine 1 && printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
+                                    clearLine 1 && printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                                 fi
                             else
-                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "$TOTAL" ]]; then
-                                    clearLine 1 && printCenterQuiet "Status: ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED"
+                                if [[ $(((SUCCESS_STATUS + ERROR_STATUS))) != "${TOTAL}" ]]; then
+                                    clearLine 1 && printCenterQuiet "Status: ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed"
                                 fi
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                            [[ $TOTAL = "$NO_OF_FILES" ]] && break
+                            [[ ${TOTAL} = "${NO_OF_FILES}" ]] && break
                         done
                         clearLine 1
 
-                        [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && newLine "\n"
+                        [[ -z ${VERBOSE} && -z ${VERBOSE_PROGRESS} ]] && newLine "\n"
                     else
                         clearLine 1 && newLine "\n"
                         ERROR_STATUS=0 SUCCESS_STATUS=0
                         for LIST in "${FINAL_LIST[@]}"; do
                             FILETOUPLOAD="${LIST//*"|:_//_:|"/}"
-                            DIRTOUPLOAD="$(: "|:_//_:|""$FILETOUPLOAD" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"/}")"
-                            if [[ -n $OVERWRITE ]]; then
-                                uploadFile update "$FILETOUPLOAD" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                            DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"/}")"
+                            if [[ -n ${OVERWRITE} || -n ${SKIP_DUPLICATES} ]]; then
+                                uploadFile update "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             else
-                                uploadFile create "$FILETOUPLOAD" "$DIRTOUPLOAD" "$ACCESS_TOKEN"
+                                uploadFile create "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}"
                             fi
-                            [[ $UPLOAD_STATUS = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
-                            if [[ -n $VERBOSE || -n $VERBOSE_PROGRESS ]]; then
-                                printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "=" && newLine "\n"
+                            [[ ${UPLOAD_STATUS} = ERROR ]] && ERROR_STATUS="$((ERROR_STATUS + 1))" || SUCCESS_STATUS="$((SUCCESS_STATUS + 1))" || :
+                            if [[ -n ${VERBOSE} || -n ${VERBOSE_PROGRESS} ]]; then
+                                printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "=" && newLine "\n"
                             else
                                 for _ in {1..2}; do clearLine 1; done
-                                printCenter "justify" "Status" ": ""$SUCCESS_STATUS"" UPLOADED | ""$ERROR_STATUS"" FAILED" "="
+                                printCenter "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                             fi
                         done
                     fi
@@ -1184,14 +1214,14 @@ processArguments() {
                     EMPTY=1
                 fi
             fi
-            if [[ $EMPTY != 1 ]]; then
-                [[ -z $VERBOSE && -z $VERBOSE_PROGRESS ]] && for _ in {1..2}; do clearLine 1; done
+            if [[ ${EMPTY} != 1 ]]; then
+                [[ -z ${VERBOSE} && -z ${VERBOSE_PROGRESS} ]] && for _ in {1..2}; do clearLine 1; done
 
-                if [[ $SUCCESS_STATUS -gt 0 ]]; then
-                    if [[ -n $SHARE ]]; then
+                if [[ ${SUCCESS_STATUS} -gt 0 ]]; then
+                    if [[ -n ${SHARE} ]]; then
                         printCenter "justify" "Sharing the folder.." "-"
-                        if SHARE_MSG="$(shareID "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" "$ACCESS_TOKEN" "$SHARE_EMAIL")"; then
-                            printf "%s\n" "$SHARE_MSG"
+                        if SHARE_MSG="$(shareID "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
+                            printf "%s\n" "${SHARE_MSG}"
                         else
                             clearLine 1
                         fi
@@ -1200,23 +1230,24 @@ processArguments() {
                         printCenter "justify" "FolderLink" "="
                     fi
                     isTerminal && printCenter "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                    printCenter "normal" "$(: "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
+                    printCenter "normal" "$(: "$(read -r firstline <<< "${DIRIDS[1]}" &&
+                        printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
                 fi
                 newLine "\n"
                 if isNotQuiet; then
-                    [[ $SUCCESS_STATUS -gt 0 ]] && printCenter "justify" "Total Files " "Uploaded: ""$SUCCESS_STATUS""" "="
-                    [[ $ERROR_STATUS -gt 0 ]] && printCenter "justify" "Total Files " "Failed: ""$ERROR_STATUS""" "="
+                    [[ ${SUCCESS_STATUS} -gt 0 ]] && printCenter "justify" "Total Files " "Uploaded: ${SUCCESS_STATUS}" "="
+                    [[ ${ERROR_STATUS} -gt 0 ]] && printCenter "justify" "Total Files " "Failed: ${ERROR_STATUS}" "="
                 else
-                    [[ $SUCCESS_STATUS -gt 0 ]] && printCenterQuiet "[ Total Files Uploaded: ""$SUCCESS_STATUS"" ]"
-                    [[ $ERROR_STATUS -gt 0 ]] && printCenterAuiet "[ Total Files Failed: ""$ERROR_STATUS"" ]"
+                    [[ ${SUCCESS_STATUS} -gt 0 ]] && printCenterQuiet "[ Total Files Uploaded: ${SUCCESS_STATUS} ]"
+                    [[ ${ERROR_STATUS} -gt 0 ]] && printCenterAuiet "[ Total Files Failed: ${ERROR_STATUS} ]"
                 fi
                 printf "\n"
             else
                 if isNotQuiet; then
                     for _ in {1..2}; do clearLine 1; done
-                    printCenter 'justify' "Empty Folder" "-"
+                    printCenter 'justify' "Empty Folder." "-"
                 else
-                    printCenterQuiet "Empty Folder\n"
+                    printCenterQuiet "Empty Folder.\n"
                 fi
                 printf "\n"
             fi
@@ -1233,7 +1264,7 @@ main() {
     set -o errexit -o noclobber -o pipefail
     checkBashVersion
 
-    setupArguments "$@"
+    setupArguments "${@}"
     checkDebug && checkInternet
     setupTempfile
 
@@ -1250,18 +1281,18 @@ main() {
 
     printCenter "justify" "Checking Workspace Folder.." "-"
     setupWorkspace && for _ in {1..2}; do clearLine 1; done
-    printCenter "justify" "Workspace Folder: ""$WORKSPACE_FOLDER_NAME""" "="
-    printCenter "normal" " $WORKSPACE_FOLDER_ID " "-" && newLine "\n"
+    printCenter "justify" "Workspace Folder: ${WORKSPACE_FOLDER_NAME}" "="
+    printCenter "normal" " ${WORKSPACE_FOLDER_ID} " "-" && newLine "\n"
 
     processArguments
 
     END="$(printf "%(%s)T\\n" "-1")"
     DIFF="$((END - START))"
     if isNotQuiet; then
-        printCenter "normal" " Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds " "="
+        printCenter "normal" " Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds. " "="
     else
-        printCenterQuiet "Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds"
+        printCenterQuiet "Time Elapsed: ""$((DIFF / 60))"" minute(s) and ""$((DIFF % 60))"" seconds."
     fi
 }
 
-main "$@"
+main "${@}"
