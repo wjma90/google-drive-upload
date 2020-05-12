@@ -13,7 +13,7 @@ Options:\n
   -p | --path <dir_name> - Custom path where you want to install script.\nDefault Path: %s/.google-drive-upload \n
   -c | --cmd <command_name> - Custom command name, after installation script will be available as the input argument.\nDefault Name: upload \n
   -r | --repo <Username/reponame> - Upload script from your custom repo,e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.\n
-  -b | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
+  -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
   -D | --debug - Display script command trace.\n
   -h | --help - Display usage instructions.\n\n" "${0##*/}" "${HOME}"
@@ -55,32 +55,30 @@ updateConfig() {
 # Detect profile file
 # Support bash and zsh
 detectProfile() {
-    declare DETECTED_PROFILE
-
-    if [[ -n "${BASH_VERSION}" ]]; then
-        DETECTED_PROFILE="${HOME}/.bashrc"
-    elif [[ -n "${ZSH_VERSION}" ]]; then
-        DETECTED_PROFILE="${HOME}/.zshrc"
-    elif [[ -f "${HOME}/.profile" ]]; then
-        DETECTED_PROFILE="${HOME}/.profile"
-    fi
-    if [[ -n ${DETECTED_PROFILE} ]]; then
-        printf "%s\n" "${DETECTED_PROFILE}"
-    fi
+    declare CURRENT_SHELL="${SHELL##*/}"
+    case "${CURRENT_SHELL}" in
+        'bash') DETECTED_PROFILE="${HOME}/.bashrc" ;;
+        'zsh') DETECTED_PROFILE="${HOME}/.zshrc" ;;
+        *) if [[ -f "${HOME}/.profile" ]]; then
+            DETECTED_PROFILE="${HOME}/.profile"
+        else
+            printf "No compaitable shell file\n" && exit 1
+        fi ;;
+    esac
+    printf "%s\n" "${DETECTED_PROFILE}"
 }
 
 # scrape latest commit from a repo on github
 getLatestSHA() {
     declare LATEST_SHA
-    case "${TYPE}" in
+    case "${1:-${TYPE}}" in
         branch)
-            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${REPO}"/commits/"${TYPE_VALUE}".atom -r 0-1000 | grep "Commit\\/")" && read -r firstline <<< "$hash" && regex="(/.*<)" && [[ $firstline =~ $regex ]] && echo "${BASH_REMATCH[1]:1:-1}")"
+            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-1000 | grep "Commit\\/")" && read -r firstline <<< "$hash" && regex="(/.*<)" && [[ $firstline =~ $regex ]] && echo "${BASH_REMATCH[1]:1:-1}")"
             ;;
         release)
-            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${REPO}"/releases/"${TYPE_VALUE}" | grep "=\"/""${REPO}""/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
             ;;
     esac
-
     echo "${LATEST_SHA}"
 }
 
@@ -131,17 +129,20 @@ install() {
     mkdir -p "${INSTALL_PATH}"
     printf 'Installing google-drive-upload..\n'
     printf "Fetching latest sha..\n"
-    LATEST_CURRENT_SHA="$(getLatestSHA "${REPO}" "${TYPE}" "${TYPE_VALUE}")"
+    LATEST_CURRENT_SHA="$(getLatestSHA "${TYPE}" "${TYPE_VALUE}" "${REPO}")"
     clearLine 1
     printf "Latest sha fetched\n" && printf "Downloading script..\n"
     if curl -Ls --compressed "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"; then
         chmod +x "${INSTALL_PATH}/${COMMAND_NAME}"
-        printf "\n%s" "PATH=$PATH/:${INSTALL_PATH}" >> "${SHELL_RC}"
         __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
         for i in "${__VALUES_ARRAY[@]}"; do
             updateConfig "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
         done
         updateConfig LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
+        updateConfig PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
+        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 1> /dev/null 2>&1; then
+            printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
+        fi
         clearLine 1
         printf "Installed Successfully, Command name: %s\n" "${COMMAND_NAME}"
         printf "To use the command, do\n"
@@ -169,6 +170,10 @@ update() {
         printf "Updating...\n"
         curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"
         updateConfig LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
+        updateConfig PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
+        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 1> /dev/null 2>&1; then
+            printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
+        fi
         clearLine 1
         __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
         for i in "${__VALUES_ARRAY[@]}"; do
