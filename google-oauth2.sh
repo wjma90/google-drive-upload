@@ -34,21 +34,31 @@ jsonValue() {
     grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
 }
 
+# Remove array duplicates, maintain the order as original.
+# Usage: removeArrayDuplicates "${somearray[@]}"
+# https://stackoverflow.com/a/37962595
+removeArrayDuplicates() {
+    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
+    declare -A Aseen
+    Aunique=()
+    for i in "$@"; do
+        { [[ -z ${i} || ${Aseen[${i}]} ]]; } && continue
+        Aunique+=("${i}") && Aseen[${i}]=x
+    done
+    printf '%s\n' "${Aunique[@]}"
+}
+
 # Update Config. Incase of old value, update, for new value add.
 # Usage: updateConfig valuename value configpath
 updateConfig() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=()
-    declare -A Aseen
     printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
-    mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=${VALUE}")
+    mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=\"${VALUE}\"")
     for i in "${VALUES[@]}"; do
         [[ ${i} =~ ${VALUE_NAME}\= ]] && FINAL+=("${VALUE_NAME}=\"${VALUE}\"") || FINAL+=("${i}")
     done
-    for i in "${FINAL[@]}"; do
-        [[ ${Aseen[${i}]} ]] && continue
-        printf "%s\n" "${i}" && Aseen[${i}]=x
-    done >| "${CONFIG_PATH}"
+    removeArrayDuplicates "${FINAL[@]}" >| "${CONFIG_PATH}"
 }
 
 printf "Starting script..\n"
@@ -75,9 +85,9 @@ if [[ -z ${CLIENT_SECRET} ]]; then
 fi
 
 for _ in {1..2}; do clearLine 1; done
-printf "Required credentials set.\n"
 
 if [[ ${1} = create ]]; then
+    printf "Required credentials set.\n"
     printf "Visit the below URL, tap on allow and then enter the code obtained:\n"
     URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
     printf "%s\n\n" "${URL}"
@@ -90,16 +100,33 @@ if [[ ${1} = create ]]; then
         ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
         REFRESH_TOKEN="$(jsonValue refresh_token <<< "${RESPONSE}")"
 
-        printf "Access Token: %s\n" "${ACCESS_TOKEN}"
-        printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
+        if [[ -n ${ACCESS_TOKEN} && -n ${REFRESH_TOKEN} ]]; then
+            updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+            updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+
+            printf "Access Token: %s\n" "${ACCESS_TOKEN}"
+            printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
+        else
+            printf "Error: Wrong code given, make sure you copy the exact code\n"
+            exit 1
+        fi
     else
         printf "\nNo code provided, run the script and try again.\n"
         exit 1
     fi
 elif [[ ${1} = refresh ]]; then
+    # Method to regenerate access_token ( also updates in config ).
+    # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
+    # Requirements: Refresh Token
+    getTokenandUpdate() {
+        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
+        ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
+        updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+    }
     if [[ -n ${REFRESH_TOKEN} ]]; then
-        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" ${TOKEN_URL})"
-        ACCESS_TOKEN="$(echo "${RESPONSE}" | jsonValue access_token)"
+        printf "Required credentials set.\n"
+        getTokenandUpdate
+        clearLine 1
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
     else
         printf "Refresh Token not set, use %s create to generate one.\n" "${0}"

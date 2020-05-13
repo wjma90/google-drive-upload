@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or Update google-drive-upload
+# Install, Update or Uninstall google-drive-upload
 
 usage() {
     printf "
@@ -13,8 +13,10 @@ Options:\n
   -p | --path <dir_name> - Custom path where you want to install script.\nDefault Path: %s/.google-drive-upload \n
   -c | --cmd <command_name> - Custom command name, after installation script will be available as the input argument.\nDefault Name: upload \n
   -r | --repo <Username/reponame> - Upload script from your custom repo,e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.\n
+  -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
+  -U | --uninstall - Uninstall the script and remove related files.\n
   -D | --debug - Display script command trace.\n
   -h | --help - Display usage instructions.\n\n" "${0##*/}" "${HOME}"
     exit 0
@@ -35,21 +37,31 @@ isTerminal() {
     [[ -t 1 || -z ${TERM} ]] && return 0 || return 1
 }
 
+# Remove array duplicates, maintain the order as original.
+# Usage: removeArrayDuplicates "${somearray[@]}"
+# https://stackoverflow.com/a/37962595
+removeArrayDuplicates() {
+    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
+    declare -A Aseen
+    Aunique=()
+    for i in "$@"; do
+        { [[ -z ${i} || ${Aseen[${i}]} ]]; } && continue
+        Aunique+=("${i}") && Aseen[${i}]=x
+    done
+    printf '%s\n' "${Aunique[@]}"
+}
+
 # Update Config. Incase of old value, update, for new value add.
 # Usage: updateConfig valuename value configpath
 updateConfig() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=()
-    declare -A Aseen
     printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
-    mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=${VALUE}")
+    mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=\"${VALUE}\"")
     for i in "${VALUES[@]}"; do
         [[ ${i} =~ ${VALUE_NAME}\= ]] && FINAL+=("${VALUE_NAME}=\"${VALUE}\"") || FINAL+=("${i}")
     done
-    for i in "${FINAL[@]}"; do
-        [[ ${Aseen[${i}]} ]] && continue
-        printf "%s\n" "${i}" && Aseen[${i}]=x
-    done >| "${CONFIG_PATH}"
+    removeArrayDuplicates "${FINAL[@]}" >| "${CONFIG_PATH}"
 }
 
 # Detect profile file
@@ -99,7 +111,7 @@ variables() {
     TYPE_VALUE="latest"
     SHELL_RC="$(detectProfile)"
     # shellcheck source=/dev/null
-    if [[ -f ${INFO_PATH}/google-drive-upload.info ]]; then
+    if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
 }
@@ -140,7 +152,7 @@ install() {
         done
         updateConfig LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
         updateConfig PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
-        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 1> /dev/null 2>&1; then
+        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" &> /dev/null; then
             printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
         fi
         clearLine 1
@@ -158,7 +170,7 @@ install() {
 # Update the script
 update() {
     printf "Fetching latest version info..\n"
-    LATEST_CURRENT_SHA="$(getLatestSHA "${REPO}" "${TYPE}" "${TYPE_VALUE}")"
+    LATEST_CURRENT_SHA="$(getLatestSHA "${TYPE}" "${TYPE_VALUE}" "${REPO}")"
     if [[ -z "${LATEST_CURRENT_SHA}" ]]; then
         printf "Cannot fetch remote latest version.\n"
         exit 1
@@ -171,7 +183,7 @@ update() {
         curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"
         updateConfig LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
         updateConfig PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
-        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 1> /dev/null 2>&1; then
+        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" &> /dev/null; then
             printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
         fi
         clearLine 1
@@ -180,6 +192,21 @@ update() {
             updateConfig "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
         done
         printf 'Successfully Updated.\n'
+    fi
+}
+
+# Uninstall the script
+uninstall() {
+    printf "Uninstalling..\n"
+    __bak="source ${INFO_PATH}/google-drive-upload.binpath"
+    if sed -i "s|${__bak}||g" "${SHELL_RC}"; then
+        rm -f "${INSTALL_PATH}/${COMMAND_NAME}"
+        rm -f "${INFO_PATH}/google-drive-upload.info"
+        rm -f "${INFO_PATH}/google-drive-upload.binpath"
+        clearLine 1
+        printf "Uninstall complete\n"
+    else
+        printf 'Error: Uninstall failed\n'
     fi
 }
 
@@ -231,6 +258,9 @@ setupArguments() {
                         checkLongoptions
                         SHELL_RC="${!OPTIND}" && OPTIND=$((OPTIND + 1))
                         ;;
+                    uninstall)
+                        UNINSTALL="true"
+                        ;;
                     debug)
                         DEBUG=true
                         ;;
@@ -267,13 +297,15 @@ setupArguments() {
                 TYPE=branch
                 TYPE_VALUE="${OPTARG}"
                 ;;
-
             R)
                 TYPE=release
                 TYPE_VALUE="${OPTARG}"
                 ;;
             s)
                 SHELL_RC="${OPTARG}"
+                ;;
+            U)
+                UNINSTALL="true"
                 ;;
             D)
                 DEBUG=true
@@ -335,11 +367,19 @@ main() {
     if [[ -n ${INTERACTIVE} ]]; then
         startInteractive
     fi
-
-    if type -a "${COMMAND_NAME}" > /dev/null 2>&1; then
-        update
+    if [[ -n ${UNINSTALL} ]]; then
+        if type -a "${COMMAND_NAME}" &> /dev/null; then
+            uninstall
+        else
+            printf "google-drive-upload is not installed\n"
+            exit 1
+        fi
     else
-        install
+        if type -a "${COMMAND_NAME}" &> /dev/null; then
+            update
+        else
+            install
+        fi
     fi
 }
 
