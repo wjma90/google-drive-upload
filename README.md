@@ -43,6 +43,8 @@
   - [Custom Flags](#custom-flags)
   - [Resuming Interrupted Uploads](#resuming-interrupted-uploads)
 - [Uninstall](#Uninstall)
+- [Reporting Issues](#reporting-issues)
+- [Contributing](#contributing)
 - [Inspired By](#inspired-by)
 - [License](#license)
 
@@ -94,17 +96,17 @@ You can install the script by automatic installation script provided in the repo
 
 Default values set by automatic installation script:
 
-Repo: `labbots/google-drive-upload`
+**Repo:** `labbots/google-drive-upload`
 
-Command name: `gupload`
+**Command name:** `gupload`
 
-Installation path: `$HOME/.google-drive-upload`
+**Installation path:** `$HOME/.google-drive-upload`
 
-Source: `release` ( can be `branch` )
+**Source:** `release` { can be `branch` }
 
-Source value: `latest` ( can be `branchname` )
+**Source value:** `latest` { can be `branchname` }
 
-Shell file: `.bashrc` or `.zshrc` or `.profile`
+**Shell file:** `.bashrc` or `.zshrc` or `.profile`
 
 For custom command names, repo, shell file, etc, see advanced installation method.
 
@@ -132,37 +134,55 @@ These are the flags that are available in the install.sh script:
 
     Note: This will disregard all arguments given with below flags.
 
+    ***
+
 - **-p | --path <dir_name>**
 
     Custom path where you want to install the script.
+
+    ***
 
 - **-c | --cmd <command_name>**
 
     Custom command name, after installation, script will be available as the input argument.
 
+    ***
+
 - **-r | --repo <Username/reponame>**
 
     Install script from your custom repo, e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.
+
+    ***
 
 - **-B | --branch <branch_name>**
 
     Specify branch name for the github repo, applies to custom and default repo both.
 
+    ***
+
 - **-R | --release <tag/release_tag>**
 
     Specify tag name for the github repo, applies to custom and default repo both.
+
+    ***
 
 - **-s | --shell-rc <shell_file>**
 
     Specify custom rc file, where PATH is appended, by default script detects .zshrc, .bashrc. and .profile.
 
+    ***
+
 - **-D | --debug**
 
     Display script command trace.
 
+    ***
+
 - **-h | --help**
 
     Display usage instructions.
+
+    ***
 
 Now, run the script and use flags according to your usecase.
 
@@ -192,7 +212,7 @@ There are two methods:
 
     Yes, just run the installation script again as we did in install section, and voila, it's done.
 
-**Note: Both above methods obeys the values set by user in advanced installation,**
+**Note: Above methods always obey the values set by user in advanced installation,**
 **e.g if you have installed the script with different repo, say `myrepo/gdrive-upload`, then the update will be also fetched from the same repo.**
 
 ## Usage
@@ -239,7 +259,7 @@ For uploading files, the syntax is simple;
 
 where `filename/foldername` is input file/folder and `gdrive_folder_name` is the name of the folder on gdrive, where the input file/folder will be uploaded.
 
-If gdrive_folder_name is present on gdrive, then script will upload there, else will make a folder with that name.
+If `gdrive_folder_name` is present on gdrive, then script will upload there, else will make a folder with that name.
 
 Apart from basic usage, this script provides many flags for custom usecases, like parallel uploading, skipping upload of existing files, overwriting, etc.
 
@@ -253,17 +273,25 @@ These are the custom flags that are currently implemented:
 
     Default Config: `"${HOME}/.googledrive.conf`
 
+    ***
+
 - **-C | --create-dir <foldername>**
 
     Option to create directory. Will provide folder id. Can be used to specify workspace folder for uploading files/folders.
+
+    ***
 
 - **-r | --root-dir <google_folderid>**
 
     Google folder id or url to which the file/directory to upload.
 
+    ***
+
 - **-s | --skip-subdirs**
 
     Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.
+
+    ***
 
 - **-p | --parallel <no_of_files_to_parallely_upload>**
 
@@ -274,15 +302,21 @@ These are the custom flags that are currently implemented:
   - 1 - 6 value is recommended, but can use upto 10. If errors with a high value, use smaller number.
   - Beaware, this isn't magic, obviously it comes at a cost of increased cpu/ram utilisation as it forks multiple bash processes to upload ( google how xargs works with -P option ).
 
+  ***
+
 - **-o | --overwrite**
 
     Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders and single/multiple files.
 
     Note: If you use this flag along with -d/--skip-duplicates, the skip duplicates flag is preferred.
 
+    ***
+
 - **-d | --skip-duplicates**
 
     Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.
+
+    ***
 
 - **-f | --[file/folder]**
 
@@ -299,41 +333,61 @@ These are the custom flags that are currently implemented:
 
     Incase of multiple -f flag having duplicate arguments, it takes the last duplicate of the argument to upload, in the same order provided.
 
+  ***
+
 - **-S | --share <optional_email_address>**
 
     Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.
+
+    ***
 
 - **-q | --quiet**
 
     Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.
 
+    ***
+
 - **-v | --verbose**
 
     Dislay detailed message (only for non-parallel uploads).
+
+    ***
 
 - **-V | --verbose-progress**
 
     Display detailed message and detailed upload progress(only for non-parallel uploads).
 
+    ***
+
 - **-i | --save-info <file_to_save_info>**
 
     Save uploaded files info to the given filename."
+
+    ***
 
 - **-u | --update**
 
     Update the installed script in your system, if not installed, then install.
 
+    ***
+
 - **--info**
 
     Show detailed info, only if script is installed system wide.
+
+    ***
 
 - **-h | --help**
 
     Display usage instructions.
 
+    ***
+
 - **-D | --debug**
 
     Display script command trace.
+
+    ***
 
 ### Resuming Interrupted Uploads
 
@@ -364,13 +418,35 @@ There are two methods:
 
     Yes, just run the installation script again with the flag and voila, it's done.
 
-**Note: Both above methods obeys the values set by user in advanced installation,**
+**Note: Above methods always obey the values set by user in advanced installation.**
+
+## Reporting Issues
+
+| Issues Status | [![GitHub issues](https://img.shields.io/github/issues/labbots/google-drive-upload.svg?label=&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues/) | [![GitHub issues-closed](https://img.shields.io/github/issues-closed/labbots/google-drive-upload.svg?label=&color=success&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues?q=is%3Aissue+is%3Aclosed) |
+| :--: | :--: | :--: |
+
+Use the [GitHub issue tracker](https://github.com/labbots/google-drive-upload/issues) for any bugs or feature suggestions.
+
+Before creating an issue, make sure to follow the guidelines specified in [CONTRIBUTION.md](https://github.com/labbots/google-drive-upload/blob/master/CONTRIBUTING.md#creating-an-issue)
+
+## Contributing
+
+| Total Contributers | [![GitHub contributors](https://img.shields.io/github/contributors/labbots/google-drive-upload.svg?style=for-the-badge&label=)](https://GitHub.com/labbots/google-drive-upload/graphs/contributors/) |
+| :--: | :--: |
+
+| Pull Requests | [![GitHub pull-requests](https://img.shields.io/github/issues-pr/labbots/google-drive-upload.svg?label=&style=for-the-badge&color=orange)](https://GitHub.com/labbots/google-drive-upload/issues?q=is%3Apr+is%3Aopen) | [![GitHub pull-requests closed](https://img.shields.io/github/issues-pr-closed/labbots/google-drive-upload.svg?label=&color=success&style=for-the-badge)](https://GitHub.com/labbots/google-drive-upload/issues?q=is%3Apr+is%3Aclosed) |
+| :--: | :--: | :--: |
+
+Submit patches to code or documentation as GitHub pull requests! Check out the [contribution guide](https://github.com/labbots/google-drive-upload/blob/master/CONTRIBUTING.md)
+
+Contributions must be licensed under the MIT. The contributor retains the copyright.
 
 ## Inspired By
 
 - [github-bashutils](https://github.com/soulseekah/bash-utils) - soulseekah/bash-utils
 - [deanet-gist](https://gist.github.com/deanet/3427090) - Uploading File into Google Drive
+- [Bash Bible](https://github.com/dylanaraps/pure-bash-bible) - A collection of pure bash alternatives to external processes
 
 ## License
 
-MIT
+[MIT](https://github.com/labbots/google-drive-upload/blob/master/LICENSE)
