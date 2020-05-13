@@ -23,6 +23,7 @@ Options:\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
   -u | --update - Update the installed script in your system.\n
   --info - Show detailed info, only if script is installed system wide.\n
+  -U | --uninstall - Uninstall script, remove related files.\n
   -D | --debug - Display script command trace.\n
   -h | --help - Display usage instructions.\n" "${0##*/}"
     exit 0
@@ -86,9 +87,10 @@ dirname() {
     printf '%s\n' "${tmp:-/}"
 }
 
-# Update ( install ) the script
+# Update ( install, uninstall ) the script
 update() {
-    printf 'Fetching update script..\n'
+    declare job="${1}"
+    printf 'Fetching %s script..\n' "${job:-update}"
     # shellcheck source=/dev/null
     if [[ -f "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
         source "${HOME}/.google-drive-upload/google-drive-upload.info"
@@ -96,18 +98,18 @@ update() {
     declare REPO="${REPO:-labbots/google-drive-upload}" TYPE_VALUE="${TYPE_VALUE:-latest}"
     if [[ ${TYPE} = branch ]]; then
         if __SCRIPT="$(curlCmd -Ls "https://raw.githubusercontent.com/${REPO}/${TYPE_VALUE}/install.sh")"; then
-            bash <<< "${__SCRIPT}"
+            bash <(printf "%s\n" "${__SCRIPT}") --"${job:-}"
         else
-            printf "Error: Cannot download update script..\n"
+            printf "Error: Cannot download %s script..\n" "${job:-update}"
         fi
     else
         declare LATEST_SHA
         LATEST_SHA="$(hash="$(curlCmd -L -s "https://github.com/${REPO}/releases/${TYPE_VALUE}" | grep "=\"/""${REPO}""/commit")" &&
             read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
         if __SCRIPT="$(curlCmd -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_SHA}/install.sh")"; then
-            bash <<< "${__SCRIPT}"
+            bash <(printf "%s\n" "${__SCRIPT}") --"${job:-}"
         else
-            printf "Error: Cannot download update script..\n"
+            printf "Error: Cannot download %s script..\n" "${job:-update}"
         fi
     fi
 }
@@ -559,7 +561,7 @@ setupArguments() {
     REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-    SHORTOPTS=":qvVi:sp:odf:Shur:C:Dz:-:"
+    SHORTOPTS=":qvVi:sp:odf:ShuUr:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
         case "${OPTION}" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
@@ -572,6 +574,9 @@ setupArguments() {
                         ;;
                     update)
                         update && exit $?
+                        ;;
+                    uninstall)
+                        update uninstall && exit $?
                         ;;
                     info)
                         versionInfo && exit $?
@@ -657,6 +662,9 @@ setupArguments() {
                 ;;
             u)
                 update && exit $?
+                ;;
+            U)
+                update uninstall && exit $?
                 ;;
             C)
                 FOLDERNAME="${OPTARG}"

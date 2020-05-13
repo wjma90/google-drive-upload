@@ -42,6 +42,7 @@
   - [Upload](#upload)
   - [Custom Flags](#custom-flags)
   - [Resuming Interrupted Uploads](#resuming-interrupted-uploads)
+- [Uninstall](#Uninstall)
 - [Inspired By](#inspired-by)
 - [License](#license)
 
@@ -342,6 +343,28 @@ Uploads interrupted either due to bad internet connection or manual interruption
 - Small files cannot be resumed, less that 1 MB, and the amount of size uploaded should be more than 1 MB to resume.
 - No progress bars for resumable uploads as it messes up with output.
 - You can interrupt many times you want, it will resume ( hopefully ).
+
+## Uninstall
+
+If you have followed the automatic method to install the script, then you can automatically uninstall the script.
+
+There are two methods:
+
+1. Use the script itself to uninstall the script.
+
+    `gupload -U or gupload --uninstall`
+
+    This will remove the script related files and remove path change from shell file.
+
+2. Run the installation script again with -U/--uninstall flag
+
+    ```shell
+    bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh) --uninstall
+    ```
+
+    Yes, just run the installation script again with the flag and voila, it's done.
+
+**Note: Both above methods obeys the values set by user in advanced installation,**
 
 ## Inspired By
 

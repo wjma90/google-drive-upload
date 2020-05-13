@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or Update google-drive-upload
+# Install, Update or Uninstall google-drive-upload
 
 usage() {
     printf "
@@ -16,6 +16,7 @@ Options:\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
+  -U | --uninstall - Uninstall the script and remove related files.\n
   -D | --debug - Display script command trace.\n
   -h | --help - Display usage instructions.\n\n" "${0##*/}" "${HOME}"
     exit 0
@@ -194,6 +195,21 @@ update() {
     fi
 }
 
+# Uninstall the script
+uninstall() {
+    printf "Uninstalling..\n"
+    __bak="source ${INFO_PATH}/google-drive-upload.binpath"
+    if sed -i "s|${__bak}||g" "${SHELL_RC}"; then
+        rm -f "${INSTALL_PATH}/${COMMAND_NAME}"
+        rm -f "${INFO_PATH}/google-drive-upload.info"
+        rm -f "${INFO_PATH}/google-drive-upload.binpath"
+        clearLine 1
+        printf "Uninstall complete\n"
+    else
+        printf 'Error: Uninstall failed\n'
+    fi
+}
+
 # Setup the varibles and process getopts flags.
 setupArguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
@@ -242,6 +258,9 @@ setupArguments() {
                         checkLongoptions
                         SHELL_RC="${!OPTIND}" && OPTIND=$((OPTIND + 1))
                         ;;
+                    uninstall)
+                        UNINSTALL="true"
+                        ;;
                     debug)
                         DEBUG=true
                         ;;
@@ -278,13 +297,15 @@ setupArguments() {
                 TYPE=branch
                 TYPE_VALUE="${OPTARG}"
                 ;;
-
             R)
                 TYPE=release
                 TYPE_VALUE="${OPTARG}"
                 ;;
             s)
                 SHELL_RC="${OPTARG}"
+                ;;
+            U)
+                UNINSTALL="true"
                 ;;
             D)
                 DEBUG=true
@@ -346,11 +367,19 @@ main() {
     if [[ -n ${INTERACTIVE} ]]; then
         startInteractive
     fi
-
-    if type -a "${COMMAND_NAME}" &> /dev/null; then
-        update
+    if [[ -n ${UNINSTALL} ]]; then
+        if type -a "${COMMAND_NAME}" &> /dev/null; then
+            uninstall
+        else
+            printf "google-drive-upload is not installed\n"
+            exit 1
+        fi
     else
-        install
+        if type -a "${COMMAND_NAME}" &> /dev/null; then
+            update
+        else
+            install
+        fi
     fi
 }
 
