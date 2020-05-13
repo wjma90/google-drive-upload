@@ -1,9 +1,9 @@
 # google-drive-upload contribution guidelines
 
 > A typical contribution includes:
->> Code contributions for a new feature or a bug fix.
-
->> Issue creation for a bug found.
+>
+> > Code contributions for a new feature or a bug fix.
+> > Issue creation for a bug found.
 
 ## Table of Contents
 
@@ -81,9 +81,10 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 
 - Use [shfmt](https://github.com/mvdan/sh) to format the script. Use below command:
 
-    ```shell
-    shfmt -ci -sr -i 4 upload.sh
-    ```
+  ```shell
+  shfmt -ci -sr -i 4 upload.sh
+  ```
+
 - Script should pass all [shellcheck](https://www.shellcheck.net/) warnings, if not, then disable the warning and give a valid reason.
 - Try using bash builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
 - Before adding a new logic, be sure to check the existing code.
