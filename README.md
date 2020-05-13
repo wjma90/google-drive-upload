@@ -3,6 +3,7 @@
 <a href="https://github.com/labbots/google-drive-upload/stargazers"><img src="https://img.shields.io/github/stars/labbots/google-drive-upload.svg?color=blueviolet&style=for-the-badge" alt="Stars"></a>
 <a href="https://github.com/labbots/google-drive-upload/releases"><img src="https://img.shields.io/github/release/labbots/google-drive-upload.svg?style=for-the-badge" alt="Latest Release"></a>
 <a href="https://github.com/labbots/google-drive-upload/blob/master/LICENSE"><img src="https://img.shields.io/github/license/labbots/google-drive-upload.svg?style=for-the-badge" alt="License"></a>
+<a href="https://www.codacy.com/manual/labbots/google-drive-upload?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=labbots/google-drive-upload&amp;utm_campaign=Badge_Grade"><img src="https://api.codacy.com/project/badge/Grade/55b1591a28af473886c8dfdb3f2c9123"></a>
 </p>
 
 > Google drive upload is a bash compliant script based on v3 google APIs.
