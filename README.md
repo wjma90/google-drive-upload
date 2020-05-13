@@ -1,6 +1,6 @@
 <h1 align="center">Google drive upload</h1>
 <p align="center">
-<a href="https://github.com/labbots/google-drive-upload/stars"><img src="https://img.shields.io/github/stars/labbots/google-drive-upload.svg?color=blueviolet&style=for-the-badge" alt="Stars"></a>
+<a href="https://github.com/labbots/google-drive-upload/stargazers"><img src="https://img.shields.io/github/stars/labbots/google-drive-upload.svg?color=blueviolet&style=for-the-badge" alt="Stars"></a>
 <a href="https://github.com/labbots/google-drive-upload/releases"><img src="https://img.shields.io/github/release/labbots/google-drive-upload.svg?style=for-the-badge" alt="Latest Release"></a>
 <a href="https://github.com/labbots/google-drive-upload/blob/master/LICENSE"><img src="https://img.shields.io/github/license/labbots/google-drive-upload.svg?style=for-the-badge" alt="License"></a>
 </p>
@@ -70,7 +70,7 @@ While it has not been officially tested, but should work given the description o
 
 Use [Windows Subsystem](https://docs.microsoft.com/en-us/windows/wsl/install-win10)
 
-Again, it has not been officially tested on windows, their shouldn't be anything preventing it from working. Report if you got it working by creating an issue.
+Again, it has not been officially tested on windows, there shouldn't be anything preventing it from working. Report if you got it working by creating an issue.
 
 ## Installing and Updating
 
