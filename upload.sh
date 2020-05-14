@@ -104,8 +104,7 @@ update() {
         fi
     else
         declare LATEST_SHA
-        LATEST_SHA="$(hash="$(curlCmd -L -s "https://github.com/${REPO}/releases/${TYPE_VALUE}" | grep "=\"/""${REPO}""/commit")" &&
-            read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+        LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | jsonValue tag_name)"
         if __SCRIPT="$(curlCmd -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_SHA}/install.sh")"; then
             bash <(printf "%s\n" "${__SCRIPT}") --"${job:-}"
         else

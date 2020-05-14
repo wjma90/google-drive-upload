@@ -80,15 +80,24 @@ detectProfile() {
     printf "%s\n" "${DETECTED_PROFILE}"
 }
 
-# scrape latest commit from a repo on github
+# Method to extract data from json response.
+# Usage: jsonValue key < json ( or use with a pipe output ).
+jsonValue() {
+    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
+    declare LC_ALL=C num="${2:-1}"
+    grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
+}
+
+# Use github rest api v3
+# Usage: getLatestSHA branch/release branchname/releasename reponame
 getLatestSHA() {
     declare LATEST_SHA
     case "${1:-${TYPE}}" in
         branch)
-            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-1000 | grep "Commit\\/")" && read -r firstline <<< "$hash" && regex="(/.*<)" && [[ $firstline =~ $regex ]] && echo "${BASH_REMATCH[1]:1:-1}")"
+            LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}" | jsonValue sha)"
             ;;
         release)
-            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit")" && read -r firstline <<< "$hash" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+            LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | jsonValue tag_name)"
             ;;
     esac
     echo "${LATEST_SHA}"
@@ -119,7 +128,7 @@ variables() {
 # Start a interactive session, asks for all the varibles, exit if running in a non-tty
 startInteractive() {
     __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
-    printf "%s\n" "Starting Interactive mode.."
+    printf "Interactive Mode\n"
     printf "%s\n" "Press return for default values.."
     for i in "${__VALUES_ARRAY[@]}"; do
         j="${!i}" && k="${i}"
@@ -128,7 +137,8 @@ startInteractive() {
             read -r "${k?}" <<< "${j}"
         fi
     done
-    for _ in {1..7}; do clearLine 1; done
+    for _ in "${__VALUES_ARRAY[@]}"; do clearLine 1; done
+    for _ in {1..3}; do clearLine 1; done
     for i in "${__VALUES_ARRAY[@]}"; do
         if [[ -n ${i} ]]; then
             printf "%s\n" "${i}: ${!i}"
@@ -204,16 +214,16 @@ uninstall() {
         rm -f "${INFO_PATH}/google-drive-upload.info"
         rm -f "${INFO_PATH}/google-drive-upload.binpath"
         clearLine 1
-        printf "Uninstall complete\n"
+        printf "Uninstall complete.\n"
     else
-        printf 'Error: Uninstall failed\n'
+        printf 'Error: Uninstall failed.\n'
     fi
 }
 
 # Setup the varibles and process getopts flags.
 setupArguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    SHORTOPTS=":Dhip:r:c:RB:s:-:"
+    SHORTOPTS=":Dhip:r:c:RB:Us:-:"
     while getopts "${SHORTOPTS}" OPTION; do
         case "${OPTION}" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
@@ -351,7 +361,7 @@ checkInternet() {
         CHECK_INTERNET="$(curl --compressed -Is google.com -m 10)"
     fi
     if [[ -z ${CHECK_INTERNET} ]]; then
-        printf "\n" && printf "Error: Internet connection not available.\n\n"
+        printf "Error: Internet connection not available.\n"
         exit 1
     fi
 }
