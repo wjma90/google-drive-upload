@@ -15,11 +15,16 @@ No valid arguments provided.
 Usage:
 
  ./%s create - authenticates a user.
- ./%s refresh - gets a new access token.\n" "${0}" "${0}"
+ ./%s refresh - gets a new access token.
+
+  Use update as second argument to update the local config with the new REFRESH TOKEN.
+  e.g: ./%s create/refresh update\n" "${0##*/}" "${0##*/}" "${0##*/}"
     exit 0
 }
 
 [[ ${1} = create ]] || [[ ${1} = refresh ]] || shortHelp
+
+[[ ${2} = update ]] && UPDATE="updateConfig"
 
 # Move cursor to nth no. of line and clear it to the begining.
 clearLine() {
@@ -103,8 +108,8 @@ if [[ ${1} = create ]]; then
         REFRESH_TOKEN="$(jsonValue refresh_token <<< "${RESPONSE}")"
 
         if [[ -n ${ACCESS_TOKEN} && -n ${REFRESH_TOKEN} ]]; then
-            updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
-            updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+            "${UPDATE:-:}" REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+            "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
 
             printf "Access Token: %s\n" "${ACCESS_TOKEN}"
             printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
@@ -123,7 +128,7 @@ elif [[ ${1} = refresh ]]; then
     getTokenandUpdate() {
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
         ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
-        updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+        "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
     }
     if [[ -n ${REFRESH_TOKEN} ]]; then
         printf "Required credentials set.\n"
