@@ -77,10 +77,12 @@ printf "Checking credentials..\n"
 # Credentials
 if [[ -z ${CLIENT_ID} ]]; then
     read -r -p "Client ID: " CLIENT_ID
+    [[ -z ${CLIENT_ID} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
     updateConfig CLIENT_ID "${CLIENT_ID}" "${HOME}"/.googledrive.conf
 fi
 if [[ -z ${CLIENT_SECRET} ]]; then
     read -r -p "Client Secret: " CLIENT_SECRET
+    [[ -z ${CLIENT_SECRET} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
     updateConfig CLIENT_SECRET "${CLIENT_SECRET}" "${HOME}"/.googledrive.conf
 fi
 

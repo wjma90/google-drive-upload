@@ -822,10 +822,12 @@ checkCredentials() {
     [[ -r ${CONFIG:-${HOME}/.googledrive.conf} ]] && source "${CONFIG:-${HOME}/.googledrive.conf}"
 
     [[ -z ${CLIENT_ID} ]] && read -r -p "Client ID: " CLIENT_ID && {
+        [[ -z ${CLIENT_ID} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
         updateConfig CLIENT_ID "${CLIENT_ID}" "${CONFIG:-${HOME}/.googledrive.conf}"
     }
 
     [[ -z ${CLIENT_SECRET} ]] && read -r -p "Client Secret: " CLIENT_SECRET && {
+        [[ -z ${CLIENT_SECRET} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
         updateConfig CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG:-${HOME}/.googledrive.conf}"
     }
 
