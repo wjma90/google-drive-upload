@@ -104,8 +104,7 @@ update() {
         fi
     else
         declare LATEST_SHA
-        LATEST_SHA="$(hash="$(curlCmd -L -s "https://github.com/${REPO}/releases/${TYPE_VALUE}" | grep "=\"/""${REPO}""/commit")" &&
-            read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}")"
+        LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | jsonValue tag_name)"
         if __SCRIPT="$(curlCmd -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_SHA}/install.sh")"; then
             bash <(printf "%s\n" "${__SCRIPT}") --"${job:-}"
         else
@@ -823,10 +822,12 @@ checkCredentials() {
     [[ -r ${CONFIG:-${HOME}/.googledrive.conf} ]] && source "${CONFIG:-${HOME}/.googledrive.conf}"
 
     [[ -z ${CLIENT_ID} ]] && read -r -p "Client ID: " CLIENT_ID && {
+        [[ -z ${CLIENT_ID} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
         updateConfig CLIENT_ID "${CLIENT_ID}" "${CONFIG:-${HOME}/.googledrive.conf}"
     }
 
     [[ -z ${CLIENT_SECRET} ]] && read -r -p "Client Secret: " CLIENT_SECRET && {
+        [[ -z ${CLIENT_SECRET} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
         updateConfig CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG:-${HOME}/.googledrive.conf}"
     }
 
