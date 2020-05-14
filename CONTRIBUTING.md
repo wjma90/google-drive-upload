@@ -79,20 +79,20 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 
 #### Script Code
 
-- Use [shfmt](https://github.com/mvdan/sh) to format the script. Use below command:
+-   Use [shfmt](https://github.com/mvdan/sh) to format the script. Use below command:
 
-  ```shell
-  shfmt -ci -sr -i 4 upload.sh
-  ```
+    ```shell
+    shfmt -ci -sr -i 4 upload.sh
+    ```
 
-- Script should pass all [shellcheck](https://www.shellcheck.net/) warnings, if not, then disable the warning and give a valid reason.
-- Try using bash builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
-- Before adding a new logic, be sure to check the existing code.
-- If you are adding a code which will print something to the terminal, use `printCenter` function if possible.
-- Use printf everywhere instead of echo.
-- For printing newlines, use newLine function, instead of printf, to respect -q/--quiet flag.
-- Add a functions only if you are going to use it multiple times, otherwise use the code directly, exceptions can be made where it can make the script messier.
-- For more info, start from [tldp guide](https://www.tldp.org/LDP/Bash-Beginners-Guide/html/chap_01.html).
+-   Script should pass all [shellcheck](https://www.shellcheck.net/) warnings, if not, then disable the warning and give a valid reason.
+-   Try using bash builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
+-   Before adding a new logic, be sure to check the existing code.
+-   If you are adding a code which will print something to the terminal, use `printCenter` function if possible.
+-   Use printf everywhere instead of echo.
+-   For printing newlines, use newLine function, instead of printf, to respect -q/--quiet flag.
+-   Add a functions only if you are going to use it multiple times, otherwise use the code directly, exceptions can be made where it can make the script messier.
+-   For more info, start from [tldp guide](https://www.tldp.org/LDP/Bash-Beginners-Guide/html/chap_01.html).
 
 ### Pull Request Guidelines
 
