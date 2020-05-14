@@ -7,6 +7,7 @@
 </p>
 
 > Google drive upload is a bash compliant script based on v3 google APIs.
+>
 > It utilizes google OAuth2.0 to generate access tokens and to authorize application for uploading files/folders to your google drive.
 
 - Minimal
@@ -128,61 +129,61 @@ This section provides information on how to utilise the install.sh script for cu
 
 These are the flags that are available in the install.sh script:
 
-- **-i | --interactive**
+-   <strong>-i | --interactive</strong>
 
-  Install script interactively, will ask for all the variables one by one.
+    Install script interactively, will ask for all the variables one by one.
 
-  Note: This will disregard all arguments given with below flags.
+    Note: This will disregard all arguments given with below flags.
 
-  ***
+    ---
 
-- **-p | --path <dir_name>**
+-   <strong>-p | --path <dir_name></strong>
 
-  Custom path where you want to install the script.
+    Custom path where you want to install the script.
 
-  ***
+    ---
 
-- **-c | --cmd <command_name>**
+-   <strong>-c | --cmd <command_name></strong>
 
-  Custom command name, after installation, script will be available as the input argument.
+    Custom command name, after installation, script will be available as the input argument.
 
-  ***
+    ---
 
-- **-r | --repo <Username/reponame>**
+-   <strong>-r | --repo <Username/reponame></strong>
 
-  Install script from your custom repo, e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.
+    Install script from your custom repo, e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.
 
-  ***
+    ---
 
-- **-B | --branch <branch_name>**
+-   <strong>-B | --branch <branch_name></strong>
 
-  Specify branch name for the github repo, applies to custom and default repo both.
+    Specify branch name for the github repo, applies to custom and default repo both.
 
-  ***
+    ---
 
-- **-R | --release <tag/release_tag>**
+-   <strong>-R | --release <tag/release_tag></strong>
 
-  Specify tag name for the github repo, applies to custom and default repo both.
+    Specify tag name for the github repo, applies to custom and default repo both.
 
-  ***
+    ---
 
-- **-s | --shell-rc <shell_file>**
+-   <strong>-s | --shell-rc <shell_file></strong>
 
-  Specify custom rc file, where PATH is appended, by default script detects .zshrc, .bashrc. and .profile.
+    Specify custom rc file, where PATH is appended, by default script detects .zshrc, .bashrc. and .profile.
 
-  ***
+    ---
 
-- **-D | --debug**
+-   <strong>-D | --debug</strong>
 
-  Display script command trace.
+    Display script command trace.
 
-  ***
+    ---
 
-- **-h | --help**
+-   <strong>-h | --help</strong>
 
-  Display usage instructions.
+    Display usage instructions.
 
-  ***
+    ---
 
 Now, run the script and use flags according to your usecase.
 
@@ -198,19 +199,19 @@ If you have followed the automatic method to install the script, then you can au
 
 There are two methods:
 
-1. Use the script itself to update the script.
+1.  Use the script itself to update the script.
 
-   `gupload -u or gupload --update`
+    `gupload -u or gupload --update`
 
-   This will update the script where it is installed.
+    This will update the script where it is installed.
 
-   **If you use the this flag without actually installing the script,**
+    <strong>If you use the this flag without actually installing the script,</strong>
 
-   **e.g just by `bash upload.sh -u` then it will install the script or update if already installed.**
+    <strong>e.g just by `bash upload.sh -u` then it will install the script or update if already installed.</strong>
 
-2. Run the installation script again.
+1.  Run the installation script again.
 
-   Yes, just run the installation script again as we did in install section, and voila, it's done.
+    Yes, just run the installation script again as we did in install section, and voila, it's done.
 
 **Note: Above methods always obey the values set by user in advanced installation,**
 **e.g if you have installed the script with different repo, say `myrepo/gdrive-upload`, then the update will be also fetched from the same repo.**
@@ -267,128 +268,128 @@ Apart from basic usage, this script provides many flags for custom usecases, lik
 
 These are the custom flags that are currently implemented:
 
-- **-z | --config**
+-   <strong>-z | --config</strong>
 
-  Override default config file with custom config file.
+    Override default config file with custom config file.
 
-  Default Config: `"${HOME}/.googledrive.conf`
+    Default Config: `"${HOME}/.googledrive.conf`
 
-  ***
+    ---
 
-- **-C | --create-dir <foldername>**
+-   <strong>-C | --create-dir <foldername></strong>
 
-  Option to create directory. Will provide folder id. Can be used to specify workspace folder for uploading files/folders.
+    Option to create directory. Will provide folder id. Can be used to specify workspace folder for uploading files/folders.
 
-  ***
+    ---
 
-- **-r | --root-dir <google_folderid>**
+-   <strong>-r | --root-dir <google_folderid></strong>
 
-  Google folder id or url to which the file/directory to upload.
+    Google folder id or url to which the file/directory to upload.
 
-  ***
+    ---
 
-- **-s | --skip-subdirs**
+-   <strong>-s | --skip-subdirs</strong>
 
-  Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.
+    Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.
 
-  ***
+    ---
 
-- **-p | --parallel <no_of_files_to_parallely_upload>**
+-   <strong>-p | --parallel <no_of_files_to_parallely_upload></strong>
 
-  Upload multiple files in parallel, Max value = 10, use with folders.
+    Upload multiple files in parallel, Max value = 10, use with folders.
 
-  Note:
+    Note:
 
-  - This command is only helpful if you are uploading many files which aren't big enough to utilise your full bandwidth, using it otherwise will not speed up your upload and even error sometimes,
-  - 1 - 6 value is recommended, but can use upto 10. If errors with a high value, use smaller number.
-  - Beaware, this isn't magic, obviously it comes at a cost of increased cpu/ram utilisation as it forks multiple bash processes to upload ( google how xargs works with -P option ).
+    - This command is only helpful if you are uploading many files which aren't big enough to utilise your full bandwidth, using it otherwise will not speed up your upload and even error sometimes,
+    - 1 - 6 value is recommended, but can use upto 10. If errors with a high value, use smaller number.
+    - Beaware, this isn't magic, obviously it comes at a cost of increased cpu/ram utilisation as it forks multiple bash processes to upload ( google how xargs works with -P option ).
 
-  ***
+    ---
 
-- **-o | --overwrite**
+-   <strong>-o | --overwrite</strong>
 
-  Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders and single/multiple files.
+    Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders and single/multiple files.
 
-  Note: If you use this flag along with -d/--skip-duplicates, the skip duplicates flag is preferred.
+    Note: If you use this flag along with -d/--skip-duplicates, the skip duplicates flag is preferred.
 
-  ***
+    ---
 
-- **-d | --skip-duplicates**
+-   <strong>-d | --skip-duplicates</strong>
 
-  Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.
+    Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.
 
-  ***
+    ---
 
-- **-f | --[file/folder]**
+-   <strong>-f | --file/folder</strong>
 
-  Specify files and folders explicitly in one command, use multiple times for multiple folder/files.
+    Specify files and folders explicitly in one command, use multiple times for multiple folder/files.
 
-  For uploading multiple input into the same folder:
+    For uploading multiple input into the same folder:
 
-  - Use -C / --create-dir ( e.g `./upload.sh -f file1 -f folder1 -f file2 -C <folder_wherw_to_upload>` ) option.
-  - Give two initial arguments which will use the second argument as the folder you wanna upload ( e.g: `./upload.sh filename <folder_where_to_upload> -f filename -f foldername` ).
+    -   Use -C / --create-dir ( e.g `./upload.sh -f file1 -f folder1 -f file2 -C <folder_wherw_to_upload>` ) option.
+    -   Give two initial arguments which will use the second argument as the folder you wanna upload ( e.g: `./upload.sh filename <folder_where_to_upload> -f filename -f foldername` ).
 
-    This flag can also be used for uploading files/folders which have `-` character in their name, normally it won't work, because of the flags, but using `-f -[file|folder]namewithhyphen` works. Applies for -C/--create-dir too.
+        This flag can also be used for uploading files/folders which have `-` character in their name, normally it won't work, because of the flags, but using `-f -[file|folder]namewithhyphen` works. Applies for -C/--create-dir too.
 
-    Also, as specified by longflags ( `--[file|folder]` ), you can simultaneously upload a folder and a file.
+        Also, as specified by longflags ( `--[file|folder]` ), you can simultaneously upload a folder and a file.
 
-    Incase of multiple -f flag having duplicate arguments, it takes the last duplicate of the argument to upload, in the same order provided.
+        Incase of multiple -f flag having duplicate arguments, it takes the last duplicate of the argument to upload, in the same order provided.
 
-  ***
+    ---
 
-- **-S | --share <optional_email_address>**
+-   <strong>-S | --share <optional_email_address></strong>
 
-  Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.
+    Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.
 
-  ***
+    ---
 
-- **-q | --quiet**
+-   <strong>-q | --quiet</strong>
 
-  Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.
+    Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.
 
-  ***
+    ---
 
-- **-v | --verbose**
+-   <strong>-v | --verbose</strong>
 
-  Dislay detailed message (only for non-parallel uploads).
+    Dislay detailed message (only for non-parallel uploads).
 
-  ***
+    ---
 
-- **-V | --verbose-progress**
+-   <strong>-V | --verbose-progress</strong>
 
-  Display detailed message and detailed upload progress(only for non-parallel uploads).
+    Display detailed message and detailed upload progress(only for non-parallel uploads).
 
-  ***
+    ---
 
-- **-i | --save-info <file_to_save_info>**
+-   <strong>-i | --save-info <file_to_save_info></strong>
 
-  Save uploaded files info to the given filename."
+    Save uploaded files info to the given filename."
 
-  ***
+    ---
 
-- **-u | --update**
+-   <strong>-u | --update</strong>
 
-  Update the installed script in your system, if not installed, then install.
+    Update the installed script in your system, if not installed, then install.
 
-  ***
+    ---
 
-- **--info**
+-   <strong>--info</strong>
 
-  Show detailed info, only if script is installed system wide.
+    Show detailed info, only if script is installed system wide.
 
-  ***
+    ---
 
-- **-h | --help**
+-   <strong>-h | --help</strong>
 
-  Display usage instructions.
+    Display usage instructions.
 
-  ***
+    ---
 
-- **-D | --debug**
+-   <strong>-D | --debug</strong>
 
-  Display script command trace.
+    Display script command trace.
 
-  ***
+    ---
 
 ### Resuming Interrupted Uploads
 
@@ -405,19 +406,19 @@ If you have followed the automatic method to install the script, then you can au
 
 There are two methods:
 
-1. Use the script itself to uninstall the script.
+1.  Use the script itself to uninstall the script.
 
-   `gupload -U or gupload --uninstall`
+    `gupload -U or gupload --uninstall`
 
-   This will remove the script related files and remove path change from shell file.
+    This will remove the script related files and remove path change from shell file.
 
-2. Run the installation script again with -U/--uninstall flag
+1.  Run the installation script again with -U/--uninstall flag
 
-   ```shell
-   bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh) --uninstall
-   ```
+    ```shell
+    bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh) --uninstall
+    ```
 
-   Yes, just run the installation script again with the flag and voila, it's done.
+    Yes, just run the installation script again with the flag and voila, it's done.
 
 **Note: Above methods always obey the values set by user in advanced installation.**
 
