@@ -9,7 +9,7 @@ Foldername argument is optional. If not provided, the file will be uploaded to p
 File name argument is optional if create directory option is used.\n
 Options:\n
   -C | --create-dir <foldername> - option to create directory. Will provide folder id. Can be used to provide input folder, see README.\n
-  -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.\n
+  -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.\nIf you want to change the default value, then use this format, -r/--root-dir default=root_folder_id/root_folder_url\n
   -s | --skip-subdirs - Skip creation of sub folders and upload all files inside the INPUT folder/sub-folders in the INPUT folder, use this along with -p/--parallel option to speed up the uploads.\n
   -p | --parallel <no_of_files_to_parallely_upload> - Upload multiple files in parallel, Max value = 10.\n
   -f | --[file|folder] - Specify files and folders explicitly in one command, use multiple times for multiple folder/files. See README for more use of this command.\n 
@@ -17,7 +17,7 @@ Options:\n
   -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
-  -z | --config <config_path> - Override default config file with custom config file.\n
+  -z | --config <config_path> - Override default config file with custom config file.\nIf you want to change default value, then use this format -z/--config default=default=your_config_file_path.\n
   -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
@@ -545,9 +545,11 @@ setupArguments() {
     # Internal variables
     # De-initialize if any variables set already.
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_INPUT_ARRAY INPUT_ARRAY
-    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS CONFIG ROOTDIR QUIET
+    unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
     CURL_ARGS="-#"
+    INFO_PATH="${HOME}/.google-drive-upload"
+    CONFIG="$(< "${INFO_PATH}/google-drive-upload.configpath")" &> /dev/null || :
 
     # Grab the first and second argument and shift, only if ${1} doesn't contain -.
     { ! [[ ${1} = -* ]] && INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
@@ -562,6 +564,16 @@ setupArguments() {
 
     SHORTOPTS=":qvVi:sp:odf:ShuUr:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
+        checkDefault() {
+            eval "${2}" "$([[ ${2} = default* ]] && printf "%s\n" "${3}")"
+        }
+        checkConfig() {
+            if [[ -r ${1} ]]; then
+                CONFIG="${1}" && UPDATE_DEFAULT_CONFIG="true"
+            else
+                printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
+            fi
+        }
         case "${OPTION}" in
             # Parse longoptions # https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
             -)
@@ -586,14 +598,14 @@ setupArguments() {
                         ;;
                     root-dir)
                         checkLongoptions
-                        ROOTDIR="${!OPTIND}" && OPTIND=$((OPTIND + 1))
+                        checkDefault "${!OPTIND}" "ROOTDIR=${!OPTIND/default=/}" "UPDATE_DEFAULT_ROOTDIR=updateConfig"
+                        OPTIND=$((OPTIND + 1))
+
                         ;;
                     config)
                         checkLongoptions
-                        CONFIG="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        # shellcheck source=/dev/null
-                        [[ -r ${CONFIG} ]] &&
-                            source "${CONFIG}" || printf "Warning: Given config file (%s) doesn't exist, will use existing config or prompt for credentials..\n" "${OPTARG}"
+                        checkDefault "${!OPTIND}" "checkConfig" "${!OPTIND/default=/}"
+                        OPTIND=$((OPTIND + 1))
                         ;;
                     save-info)
                         checkLongoptions
@@ -669,13 +681,10 @@ setupArguments() {
                 FOLDERNAME="${OPTARG}"
                 ;;
             r)
-                ROOTDIR="${OPTARG}"
+                checkDefault "${OPTARG}" "ROOTDIR=${OPTARG/default=/}" "UPDATE_DEFAULT_ROOTDIR=updateConfig"
                 ;;
             z)
-                CONFIG="${OPTARG}"
-                # shellcheck source=/dev/null
-                [[ -r ${CONFIG} ]] &&
-                    source "${CONFIG}" || printf "Warning: Given config file (%s) doesn't exist, will use existing config or prompt for credentials..\n" "${OPTARG}"
+                checkDefault "${OPTARG}" "checkConfig" "${OPTARG/default=/}"
                 ;;
             i)
                 LOG_FILE_ID="${OPTARG}"
@@ -819,16 +828,21 @@ setupTempfile() {
 checkCredentials() {
     # shellcheck source=/dev/null
     # Config file is created automatically after first run
-    [[ -r ${CONFIG:-${HOME}/.googledrive.conf} ]] && source "${CONFIG:-${HOME}/.googledrive.conf}"
+    if [[ -r ${CONFIG} ]]; then
+        source "${CONFIG}"
+        if [[ -n ${UPDATE_DEFAULT_CONFIG} ]]; then
+            printf "%s\n" "${CONFIG}" >| "${INFO_PATH}/google-drive-upload.configpath"
+        fi
+    fi
 
     [[ -z ${CLIENT_ID} ]] && read -r -p "Client ID: " CLIENT_ID && {
         [[ -z ${CLIENT_ID} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
-        updateConfig CLIENT_ID "${CLIENT_ID}" "${CONFIG:-${HOME}/.googledrive.conf}"
+        updateConfig CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
     }
 
     [[ -z ${CLIENT_SECRET} ]] && read -r -p "Client Secret: " CLIENT_SECRET && {
         [[ -z ${CLIENT_SECRET} ]] && printf "Error: No value provided.\n" 1>&2 && exit 1
-        updateConfig CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG:-${HOME}/.googledrive.conf}"
+        updateConfig CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
     }
 
     # Method to obtain refresh_token.
@@ -837,7 +851,7 @@ checkCredentials() {
         read -r -p "If you have a refresh token generated, then type the token, else leave blank and press return key..
     Refresh Token: " REFRESH_TOKEN && REFRESH_TOKEN="${REFRESH_TOKEN//[[:space:]]/}"
         if [[ -n ${REFRESH_TOKEN} ]]; then
-            updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+            updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
         else
             printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
             URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
@@ -851,8 +865,8 @@ checkCredentials() {
                 REFRESH_TOKEN="$(jsonValue refresh_token <<< "${RESPONSE}")"
 
                 if [[ -n ${ACCESS_TOKEN} && -n ${REFRESH_TOKEN} ]]; then
-                    updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
-                    updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+                    updateConfig REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
+                    updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
                 else
                     printf "Error: Wrong code given, make sure you copy the exact code.\n"
                     exit 1
@@ -871,7 +885,7 @@ checkCredentials() {
     getTokenandUpdate() {
         RESPONSE="$(curlCmd -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
         ACCESS_TOKEN="$(jsonValue access_token <<< "${RESPONSE}")"
-        updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+        updateConfig ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
     }
     if [[ -z ${ACCESS_TOKEN} ]]; then
         getTokenandUpdate
@@ -888,7 +902,7 @@ setupRootdir() {
             exit 1
         }
         if [[ -n ${ROOT_FOLDER} ]]; then
-            updateConfig ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG:-${HOME}/.googledrive.conf}"
+            "${1:-updateConfig}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         else
             "${QUIET:-printCenter}" "justify" "Given root folder " " ID/URL invalid." "="
             exit 1
@@ -896,7 +910,7 @@ setupRootdir() {
     }
     if [[ -n ${ROOTDIR} ]]; then
         ROOT_FOLDER="${ROOTDIR//[[:space:]]/}"
-        { [[ -n ${ROOT_FOLDER} ]] && checkROOTID; } || :
+        { [[ -n ${ROOT_FOLDER} ]] && checkROOTID "${UPDATE_DEFAULT_ROOTDIR}"; } || :
     elif [[ -z ${ROOT_FOLDER} ]]; then
         read -r -p "Root Folder ID or URL (Default: root): " ROOT_FOLDER
         ROOT_FOLDER="${ROOT_FOLDER//[[:space:]]/}"
@@ -904,7 +918,7 @@ setupRootdir() {
             checkROOTID
         else
             ROOT_FOLDER="root"
-            updateConfig ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG:-${HOME}/.googledrive.conf}"
+            updateConfig ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         fi
     fi
 }

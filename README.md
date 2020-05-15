@@ -95,7 +95,7 @@ The script explicitly requires the following programs:
 
 You can install the script by automatic installation script provided in the repository.
 
-Default values set by automatic installation script:
+Default values set by automatic installation script, which are changeable:
 
 **Repo:** `labbots/google-drive-upload`
 
@@ -108,6 +108,8 @@ Default values set by automatic installation script:
 **Source value:** `latest` { can be `branchname` }
 
 **Shell file:** `.bashrc` or `.zshrc` or `.profile`
+
+**Config Path** `${HOME}/.googledrive.conf`
 
 For custom command names, repo, shell file, etc, see advanced installation method.
 
@@ -170,6 +172,12 @@ These are the flags that are available in the install.sh script:
 -   <strong>-s | --shell-rc <shell_file></strong>
 
     Specify custom rc file, where PATH is appended, by default script detects .zshrc, .bashrc. and .profile.
+
+    ---
+
+-   <strong>-z | --config <config file path></strong>
+
+    Specify custom config file path, where credentials will be stored or loaded from.
 
     ---
 
@@ -274,6 +282,12 @@ These are the custom flags that are currently implemented:
 
     Default Config: `"${HOME}/.googledrive.conf`
 
+    If you want to change the default value of the config path, then use this format,
+
+    ```shell
+    gupload --config default=your_config_file_path
+    ```
+
     ---
 
 -   <strong>-C | --create-dir <foldername></strong>
@@ -285,6 +299,12 @@ These are the custom flags that are currently implemented:
 -   <strong>-r | --root-dir <google_folderid></strong>
 
     Google folder id or url to which the file/directory to upload.
+
+    If you want to change the default value of the rootdir stored in config, then use this format,
+
+    ```shell
+    gupload --root-dir default=root_folder_[id/url]
+    ```
 
     ---
 
