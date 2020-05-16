@@ -82,8 +82,14 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 -   Use [shfmt](https://github.com/mvdan/sh) to format the script. Use below command:
 
     ```shell
-    shfmt -ci -sr -i 4 upload.sh
+    shfmt upload.sh
     ```
+
+    The repo already provides the .editorconfig file, which shfmt reads, so no need for extra flags.
+
+    You can also install shfmt for various editors, refer their repo for information.
+
+    Note: This is strictly necessary to maintain consistency, do not skip.
 
 -   Script should pass all [shellcheck](https://www.shellcheck.net/) warnings, if not, then disable the warning and give a valid reason.
 -   Try using bash builtins and string substitution as much as possible instead of external programs like sed, head, etc. This gives the script a performance boost. There are many functions that are present in the script as an alternative to various external programs, use them as much as possible.
