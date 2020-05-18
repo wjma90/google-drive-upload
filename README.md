@@ -455,6 +455,8 @@ Contributions must be licensed under the MIT. The contributor retains the copyri
 
 [MIT](https://github.com/labbots/google-drive-upload/blob/master/LICENSE)
 
-## Treeware            
+## Treeware
+
+![Treeware (Trees)](https://img.shields.io/treeware/trees/labbots/google-drive-upload?color=green&style=for-the-badge)
 
 This package is [Treeware](https://treeware.earth). You are free to use this package, but if you use it in production, then we would highly appreciate you [**buying the world a tree**](https://plant.treeware.earth/labbots/google-drive-upload) to thank us for our work. By contributing to the Treeware forest you’ll be creating employment for local families and restoring wildlife habitats.
