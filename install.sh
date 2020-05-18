@@ -16,9 +16,10 @@ Options:\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
+  -z | --config <fullpath> - Specify fullpath of the config file which will contain the credentials.\nDefault : %s/.googledrive.conf
   -U | --uninstall - Uninstall the script and remove related files.\n
   -D | --debug - Display script command trace.\n
-  -h | --help - Display usage instructions.\n\n" "${0##*/}" "${HOME}"
+  -h | --help - Display usage instructions.\n\n" "${0##*/}" "${HOME}" "${HOME}"
     exit 0
 }
 
@@ -35,6 +36,15 @@ checkBashVersion() {
 # Check if we are running in a terminal.
 isTerminal() {
     [[ -t 1 || -z ${TERM} ]] && return 0 || return 1
+}
+
+# Get fullpath of a file or folder
+# Usage: fullpath file/folder
+fullPath() {
+    case "${1?${FUNCNAME[0]}: Missing arguments}" in
+        /*) printf "%s\n" "${1}" ;;
+        *) printf "%s\n" "${PWD}/${1}" ;;
+    esac
 }
 
 # Remove array duplicates, maintain the order as original.
@@ -116,6 +126,7 @@ variables() {
     COMMAND_NAME="gupload"
     INFO_PATH="${HOME}/.google-drive-upload"
     INSTALL_PATH="${HOME}/.google-drive-upload/bin"
+    CONFIG="${HOME}/.googledrive.conf"
     TYPE="release"
     TYPE_VALUE="latest"
     SHELL_RC="$(detectProfile)"
@@ -123,11 +134,11 @@ variables() {
     if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
+    __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
 }
 
 # Start a interactive session, asks for all the varibles, exit if running in a non-tty
 startInteractive() {
-    __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
     printf "Interactive Mode\n"
     printf "%s\n" "Press return for default values.."
     for i in "${__VALUES_ARRAY[@]}"; do
@@ -156,12 +167,12 @@ install() {
     printf "Latest sha fetched\n" && printf "Downloading script..\n"
     if curl -Ls --compressed "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"; then
         chmod +x "${INSTALL_PATH}/${COMMAND_NAME}"
-        __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
         for i in "${__VALUES_ARRAY[@]}"; do
             updateConfig "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
         done
         updateConfig LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
         updateConfig PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
+        printf "%s\n" "${CONFIG}" >| "${INFO_PATH}"/google-drive-upload.configpath
         if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" &> /dev/null; then
             printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
         fi
@@ -193,11 +204,11 @@ update() {
         curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"
         updateConfig LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
         updateConfig PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
+        printf "%s\n" "${CONFIG}" >| "${INFO_PATH}"/google-drive-upload.configpath
         if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" &> /dev/null; then
             printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
         fi
         clearLine 1
-        __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH TYPE TYPE_VALUE SHELL_RC)
         for i in "${__VALUES_ARRAY[@]}"; do
             updateConfig "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
         done
@@ -268,6 +279,20 @@ setupArguments() {
                         checkLongoptions
                         SHELL_RC="${!OPTIND}" && OPTIND=$((OPTIND + 1))
                         ;;
+                    config)
+                        checkLongoptions
+                        if [[ -d "${!OPTIND}" ]]; then
+                            printf "Error: -z/--config only takes filename as argument, given input ( %s ) is a directory." "${!OPTIND}" 1>&2 && exit 1
+                        elif [[ -f "${!OPTIND}" ]]; then
+                            if [[ -r "${!OPTIND}" ]]; then
+                                CONFIG="$(fullPath "${!OPTIND}")" && OPTIND=$((OPTIND + 1))
+                            else
+                                printf "Error: Current user doesn't have read permission for given config file ( %s ).\n" "${!OPTIND}" 1>&2 && exit 1
+                            fi
+                        else
+                            CONFIG="${!OPTIND}" && OPTIND=$((OPTIND + 1))
+                        fi
+                        ;;
                     uninstall)
                         UNINSTALL="true"
                         ;;
@@ -313,6 +338,19 @@ setupArguments() {
                 ;;
             s)
                 SHELL_RC="${OPTARG}"
+                ;;
+            z)
+                if [[ -d "${OPTARG}" ]]; then
+                    printf "Error: -z/--config only takes filename as argument, given input ( %s ) is a directory." "${OPTARG}" 1>&2 && exit 1
+                elif [[ -f "${OPTARG}" ]]; then
+                    if [[ -r "${OPTARG}" ]]; then
+                        CONFIG="$(fullPath "${!OPTIND}")" && OPTIND=$((OPTIND + 1))
+                    else
+                        printf "Error: Current user doesn't have read permission for given config file ( %s ).\n" "${OPTARG}" 1>&2 && exit 1
+                    fi
+                else
+                    CONFIG="${OPTARG}" && OPTIND=$((OPTIND + 1))
+                fi
                 ;;
             U)
                 UNINSTALL="true"
