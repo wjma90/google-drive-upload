@@ -13,6 +13,7 @@
 - [Code Contributions](#code-contributions)
   - [Commit Guidelines](#commit-guidelines)
   - [Code Guidelines](#code-guidelines)
+    - [Naming Conventions](#naming-conventions)
     - [Documentation](#documentation)
     - [Script Code](#script-code)
   - [Pull Request Guidelines](#pull-request-guidelines)
@@ -69,6 +70,48 @@ Before committing check for unnecessary whitespace with `git diff --check`.
 For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com/book/en/v2/Distributed-Git-Contributing-to-a-Project#Commit-Guidelines).
 
 ### Code Guidelines
+
+#### Naming Conventions
+
+##### Variables and Constants
+
+- Variable names must be meaningful and self-documenting.
+- Long variable names must be structured by underscores to improve legibility.
+- Global variables and constants must be ALL CAPS with underscores. (eg., INPUT_FILE)
+- local variables used within functions must be all lower case with underscores. (eg., post_data)
+- Variable names can be alphanumeric with underscores. No special characters in variable names.
+- Variables name must not start with number. 
+
+##### Functions
+
+- Each function must contain a introductory comment. The comment must contain function name, short description of the function and description of the arguments and list of global variables used and modified.
+
+```shell
+#######################################
+# Create directory in Google drive.
+# Globals:
+#   ROOT_DIR
+# Arguments:
+#   folder name to be created, access token.
+# Returns:
+#   0 if directory created successfully, non-zero on error.
+#######################################
+```
+- Function names must be all lower case with underscores to seperate words (snake_case).
+- Internal functions must start with underscore.
+- Package functions must be seperated with :: .
+
+```shell
+# internal function
+_check_connection() {
+  …
+}
+
+# Part of a package
+gupload::create_directory() {
+  …
+}
+```
 
 #### Documentation
 
