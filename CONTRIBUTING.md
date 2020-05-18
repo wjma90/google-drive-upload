@@ -99,16 +99,10 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 ```
 - Function names must be all lower case with underscores to seperate words (snake_case).
 - Internal functions must start with underscore.
-- Package functions must be seperated with :: .
 
 ```shell
 # internal function
 _check_connection() {
-  …
-}
-
-# Part of a package
-gupload::create_directory() {
   …
 }
 ```
