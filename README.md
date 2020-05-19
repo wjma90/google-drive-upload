@@ -4,7 +4,7 @@
 <a href="https://github.com/labbots/google-drive-upload/releases"><img src="https://img.shields.io/github/release/labbots/google-drive-upload.svg?style=for-the-badge" alt="Latest Release"></a>
 <a href="https://github.com/labbots/google-drive-upload/blob/master/LICENSE"><img src="https://img.shields.io/github/license/labbots/google-drive-upload.svg?style=for-the-badge" alt="License"></a>
 <a href="https://www.codacy.com/manual/labbots/google-drive-upload?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=labbots/google-drive-upload&amp;utm_campaign=Badge_Grade"><img alt="Codacy grade" src="https://img.shields.io/codacy/grade/55b1591a28af473886c8dfdb3f2c9123?style=for-the-badge"></a>
-<a href="https://plant.treeware.earth/labbots/google-drive-upload"><img alt="Buy us a tree" src="https://img.shields.io/treeware/trees/labbots/google-drive-upload?color=green&label=Treeware%20%F0%9F%8C%B3&style=for-the-badge"></a>
+<a href="https://plant.treeware.earth/labbots/google-drive-upload"><img alt="Buy us a tree" src="https://img.shields.io/treeware/trees/labbots/google-drive-upload?color=green&label=Buy us a Tree%20%F0%9F%8C%B3&style=for-the-badge"></a>
 </p>
 
 > Google drive upload is a bash compliant script based on v3 google APIs.
