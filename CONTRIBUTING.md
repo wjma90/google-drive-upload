@@ -78,7 +78,7 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 - Variable names must be meaningful and self-documenting.
 - Long variable names must be structured by underscores to improve legibility.
 - Global variables and constants must be ALL CAPS with underscores. (eg., INPUT_FILE)
-- local variables used within functions must be all lower case with underscores. (eg., post_data)
+- local variables used within functions must be all lower case with underscores ( only if required ). (eg., post_data)
 - Variable names can be alphanumeric with underscores. No special characters in variable names.
 - Variables name must not start with number. 
 
@@ -87,15 +87,19 @@ For further recommendations, see [Pro Git Commit Guidelines](https://git-scm.com
 - Each function must contain a introductory comment. The comment must contain function name, short description of the function and description of the arguments and list of global variables used and modified.
 
 ```shell
-#######################################
-# Create directory in Google drive.
-# Globals:
-#   ROOT_DIR
-# Arguments:
-#   folder name to be created, access token.
-# Returns:
-#   0 if directory created successfully, non-zero on error.
-#######################################
+###################################################
+# Create/Check directory in google drive.
+# Globals: 2 variables, 3 functions
+#   Variables - API_URL, API_VERSION
+#   Functions - urlEncode, curlCmd, jsonValue
+# Arguments: 3
+#   ${1} = dir name
+#   ${2} = root dir id of given dir
+#   ${3} = Access Token
+# Result: print folder id
+# Reference:
+#   https://developers.google.com/drive/api/v3/folder
+###################################################
 ```
 - Function names must be all lower case with underscores to seperate words (snake_case).
 - Internal functions must start with underscore.
@@ -106,6 +110,9 @@ _check_connection() {
   …
 }
 ```
+
+- For additing new standalone functions, use utils.sh, maintain alphabetical order.
+- For using a function in install.sh, add to it directly and also utils.sh.
 
 #### Documentation
 
