@@ -488,15 +488,11 @@ _setup_arguments() {
 
     SHORTOPTS=":qvVi:sp:odf:ShuUr:C:Dz:-:"
     while getopts "${SHORTOPTS}" OPTION; do
-        _check_default() {
-            eval "${2}" "$([[ ${2} = default* ]] && printf "%s\n" "${3}")"
-        }
         _check_config() {
-            if [[ -r ${1} ]]; then
-                CONFIG="${1}" && UPDATE_DEFAULT_CONFIG="true"
-            else
+            { [[ ${1} = default* ]] && UPDATE_DEFAULT_CONFIG="true"; } || :
+            { [[ -r ${2} ]] && CONFIG="${2}"; } || {
                 printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
-            fi
+            }
         }
         case "${OPTION}" in
             -)
@@ -525,13 +521,13 @@ _setup_arguments() {
                         ;;
                     root-dir)
                         _check_longoptions
-                        _check_default "${!OPTIND}" "ROOTDIR=${!OPTIND/default=/}" "UPDATE_DEFAULT_ROOTDIR=_update_config"
+                        ROOTDIR="${!OPTIND/default=/}"
+                        { [[ ${!OPTIND} = default* ]] && UPDATE_DEFAULT_ROOTDIR="_update_config"; } || :
                         OPTIND=$((OPTIND + 1))
-
                         ;;
                     config)
                         _check_longoptions
-                        _check_default "${!OPTIND}" "_check_config" "${!OPTIND/default=/}"
+                        _check_config "${!OPTIND}" "${!OPTIND/default=/}"
                         OPTIND=$((OPTIND + 1))
                         ;;
                     save-info)
@@ -607,10 +603,11 @@ _setup_arguments() {
                 FOLDERNAME="${OPTARG}"
                 ;;
             r)
-                _check_default "${OPTARG}" "ROOTDIR=${OPTARG/default=/}" "UPDATE_DEFAULT_ROOTDIR=_update_config"
+                ROOTDIR="${OPTARG/default=/}"
+                { [[ ${OPTARG} = default* ]] && UPDATE_DEFAULT_ROOTDIR="_update_config"; } || :
                 ;;
             z)
-                _check_default "${OPTARG}" "_check_config" "${OPTARG/default=/}"
+                _check_config "${OPTARG}" "${OPTARG/default=/}"
                 ;;
             i)
                 LOG_FILE_ID="${OPTARG}"

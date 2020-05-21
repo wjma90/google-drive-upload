@@ -27,13 +27,13 @@ Usage:
 [[ ${2} = update ]] && UPDATE="_update_config"
 
 UTILS_FILE="${UTILS_FILE:-./utils.sh}"
-    if [[ -r ${UTILS_FILE} ]]; then
-        # shellcheck source=/dev/null
-        source "${UTILS_FILE}" || { printf "Error: Unable to source utils file ( %s ) .\n" "${UTILS_FILE}" && exit 1; }
-    else
-        printf "Error: Utils file ( %s ) not found\n" "${UTILS_FILE}"
-        exit 1
-    fi
+if [[ -r ${UTILS_FILE} ]]; then
+    # shellcheck source=/dev/null
+    source "${UTILS_FILE}" || { printf "Error: Unable to source utils file ( %s ) .\n" "${UTILS_FILE}" && exit 1; }
+else
+    printf "Error: Utils file ( %s ) not found\n" "${UTILS_FILE}"
+    exit 1
+fi
 
 if ! _is_terminal; then
     DEBUG="true"

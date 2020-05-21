@@ -184,8 +184,8 @@ _full_path() {
 # Globals: None
 # Arguments: 3
 #   ${1} = "branch" or "release"
-#   ${2} = repo name e.g labbots/google-drive-upload
-#   ${3} = branch name
+#   ${2} = branch name or release name
+#   ${3} = repo name e.g labbots/google-drive-upload
 # Result: print fetched sha
 ###################################################
 _get_latest_sha() {
