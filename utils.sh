@@ -184,6 +184,26 @@ _dirname() {
 }
 
 ###################################################
+# Convert given time in seconds to readable form
+# 110 to 1 minute(s) and 50 seconds
+# Globals: None
+# Arguments: 1
+#   ${1} = Positive Integer ( time in seconds )
+# Result: read description
+# Reference:
+#   https://stackoverflow.com/a/32164707
+###################################################
+_display_time() {
+    declare T="${1}"
+    declare DAY="$((T / 60 / 60 / 24))" HR="$((T / 60 / 60 % 24))" MIN="$((T / 60 % 60))" SEC="$((T % 60))"
+    [[ ${DAY} -gt 0 ]] && printf '%d days ' "${DAY}"
+    [[ ${HR} -gt 0 ]] && printf '%d hrs ' "${HR}"
+    [[ ${MIN} -gt 0 ]] && printf '%d minute(s) ' "${MIN}"
+    [[ ${DAY} -gt 0 || ${HR} -gt 0 || ${MIN} -gt 0 ]] && printf 'and '
+    printf '%d seconds\n' "${SEC}"
+}
+
+###################################################
 # Extract ID from a googledrive folder/file url.
 # Globals: None
 # Arguments: 1

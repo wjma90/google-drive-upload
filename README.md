@@ -26,6 +26,7 @@
 - Latest gdrive api used i.e v3
 - Pretty logging
 - Easy to install and update
+- An additional sync script for background synchronisation jobs. Read [Synchronisation](#synchronisation) section for more info.
 
 ## Table of Contents
 
@@ -44,9 +45,13 @@
   - [Generating Oauth Credentials](#generating-oauth-credentials)
   - [First Run](#first-run)
   - [Upload](#upload)
-  - [Custom Flags](#custom-flags)
+  - [Upload Script Custom Flags](#upload-script-custom-flags)
   - [Multiple Inputs](#multiple-inputs)
   - [Resuming Interrupted Uploads](#resuming-interrupted-uploads)
+- [Additional Usage](#additional-usage)
+  - [Synchronisation](#synchronisation)
+    - [Basic Usage](#basic-usage)
+    - [Sync Script Custom Flags](#sync-script-custom-flags)
 - [Uninstall](#Uninstall)
 - [Reporting Issues](#reporting-issues)
 - [Contributing](#contributing)
@@ -93,18 +98,28 @@ The script explicitly requires the following programs:
 | file/mimetype | Mimetype generation for extension less files           |
 | find          | To find files and folders for recursive folder uploads |
 | xargs         | For parallel uploading                                 |
+| mkdir         | To create folders                                      |
+| rm            | To remove files and folders                            |
 | grep          | Miscellaneous                                          |
 | sed           | Miscellaneous                                          |
+| cat           | Miscellaneous ( only sync.sh )                         |
+| diff          | To detect new files in a folder ( only sync.sh )       |
+| ps            | To manage background jobs ( only sync.sh )             |
+| tail          | To show indefinite logs ( only sync.sh )               |
 
 ### Installation
 
 You can install the script by automatic installation script provided in the repository.
+
+This will also install the synchronisation script provided in the repo.
 
 Default values set by automatic installation script, which are changeable:
 
 **Repo:** `labbots/google-drive-upload`
 
 **Command name:** `gupload`
+
+**Sync command name:** `gsync`
 
 **Installation path:** `$HOME/.google-drive-upload`
 
@@ -136,6 +151,10 @@ This section provides information on how to utilise the install.sh script for cu
 
 These are the flags that are available in the install.sh script:
 
+<details>
+
+<summary>Click to expand</summary>
+
 -   <strong>-i | --interactive</strong>
 
     Install script interactively, will ask for all the variables one by one.
@@ -153,6 +172,8 @@ These are the flags that are available in the install.sh script:
 -   <strong>-c | --cmd <command_name></strong>
 
     Custom command name, after installation, script will be available as the input argument.
+
+    To change sync command name, use install sh -c gupload sync='gsync'
 
     ---
 
@@ -205,6 +226,7 @@ E.g:
 ```shell
 bash <(curl --compressed -s https://raw.githubusercontent.com/labbots/google-drive-upload/master/install.sh) -r username/reponame -p somepath -s shell_file -c command_name -B branch_name
 ```
+</details>
 
 ### Updation
 
@@ -277,7 +299,7 @@ If `gdrive_folder_name` is present on gdrive, then script will upload there, els
 
 Apart from basic usage, this script provides many flags for custom usecases, like parallel uploading, skipping upload of existing files, overwriting, etc.
 
-### Custom Flags
+### Upload Script Custom Flags
 
 These are the custom flags that are currently implemented:
 
@@ -285,13 +307,11 @@ These are the custom flags that are currently implemented:
 
     Override default config file with custom config file.
 
-    Default Config: `"${HOME}/.googledrive.conf`
+    Default Config: `${HOME}/.googledrive.conf`
 
     If you want to change the default value of the config path, then use this format,
 
-    ```shell
-    gupload --config default=your_config_file_path
-    ```
+    `gupload --config default=your_config_file_path`
 
     ---
 
@@ -307,9 +327,7 @@ These are the custom flags that are currently implemented:
 
     If you want to change the default value of the rootdir stored in config, then use this format,
 
-    ```shell
-    gupload --root-dir default=root_folder_[id/url]
-    ```
+    `gupload --root-dir default=root_folder_[id/url]`
 
     ---
 
@@ -456,6 +474,148 @@ Uploads interrupted either due to bad internet connection or manual interruption
 - Small files cannot be resumed, less that 1 MB, and the amount of size uploaded should be more than 1 MB to resume.
 - No progress bars for resumable uploads as it messes up with output.
 - You can interrupt many times you want, it will resume ( hopefully ).
+
+## Additional Usage
+
+### Synchronisation
+
+This repo also provides an additional script ( [sync.sh](https://github.com/labbots/google-drive-upload/blob/master/sync.sh) ) to utilise upload.sh for synchronisation jobs, i.e background jobs.
+
+#### Basic Usage
+
+To create a sync job, just run
+
+`gsync folder_name -d gdrive_folder`
+
+Here, folder_name is the local folder you want to sync and gdrive_folder is google drive folder name.
+
+In the local folder, all the contents present or added in the future will be automatically uploaded.
+
+Note: Giving gdrive_folder is optional, if you don't specify a name with -d/--directory flags, then it will take the name of the local folder.
+
+Also, gdrive folder creation works in the same way as gupload command.
+
+Default wait time: 3 secs ( amount of time to wait before checking new files ).
+
+Default gupload arguments: None ( see -a/--arguments section below ).
+
+#### Sync Script Custom Flags
+
+Read this section thoroughly to fully utilise the sync script, feel free to open an issue if any doubts regarding the usage.
+
+<details>
+
+<summary>Click to expand</summary>
+
+-   <strong>-d | --directory</strong>
+
+    Specify gdrive folder name, if not specified then local folder name is used.
+
+    ---
+
+-   <strong>-j | --jobs</strong>
+
+    See all background jobs that were started and still running.
+
+    Use -j/--jobs v/verbose to show additional information for jobs.
+
+    Additional information includes: CPU usage & Memory usage and No. of failed & successful uploads.
+
+    ---
+
+-   <strong>-p | --pid</strong>
+
+    Specify a pid number, used for --jobs or --kill or --info flags, multiple usage allowed.
+
+    ---
+
+-   <strong>-i | --info</strong>
+
+    Print information for a specific job. These are the methods to do it:
+
+    -   By specifying local folder and gdrive folder of an existing job,
+
+        e.g: `gsync local_folder -d gdrive folder -i`
+
+    -   By specifying pid number,
+
+        e.g: `gsync -i -p pid_number`
+
+    -   To show info of multiple jobs, use this flag multiple times,
+
+        e.g: `gsync -i pid1 -p pid2 -p pid3`. You can also use it with multiple inputs by adding this flag.
+
+    ---
+
+-   <strong>-k | --kill</strong>
+
+    Kill background jobs, following are methods to do it:
+
+    -   By specifying local_folder and gdrive_folder,
+
+        e.g. `gsync local_folder -d gdrive_folder -k`, will kill that specific job.
+
+    -   pid ( process id ) number can be used as an additional argument to kill a that specific job,
+
+        e.g: `gsync -k -p pid_number`.
+
+    -   To kill multiple jobs, use this flag multiple times,
+
+        e.g: `gsync -k pid1 -p pid2 -p pid3`. You can also using it with multiple inputs with this flag.
+
+    -   This flag can also be used to kill all the jobs,
+
+        e.g: `gsync -k all`. This will stop all the background jobs running.
+
+    ---
+
+-   <strong>-t | --time time_in_seconds</strong>
+
+    The amount of time that sync will wait before checking new files in the local folder given to sync job.
+
+    e.g: `gsync -t 4 local_folder`, here 4 is the wait time.
+
+    To set default time, use `gsync local_folder -t default=4`, it will stored in your default config.
+
+    ---
+
+-   <strong>-l | --logs</strong>
+
+    To show the logs after starting a job or show log of existing job.
+
+    -   By specifying local_folder and gdrive_folder,
+
+        e.g. `gsync local_folder -d gdrive_folder -l`, will show logs of that specific job.
+
+    -   pid ( process id ) number can be used as an additional argument to show logs of a specific job,
+
+        e.g: `gsync -l -p pid_number`.
+
+    Note: If used with multiple inputs or pid numbers, then only first pid/input log is shown, as it goes on indefinitely.
+
+    ---
+
+-   <strong>-a | --arguments</strong>
+
+    As the script uses gupload, you can specify custom flags for background job,
+
+    e.g: `gsync local_folder -a '-q -p 4 -d'`
+
+    To set some arguments by default, use `gsync -a default='-q -p 4 -d'`.
+
+    In this example, will skip existing files, 4 parallel upload in case of folder.
+
+    ---
+
+-   <strong>-d | --debug</strong>
+
+    Display script command trace, use before all the flags to see maximum script trace.
+
+    ---
+
+Note: Flags that use pid number as input should be used at last, if you are not intending to provide pid number, say in case of a folder name with positive integers.
+
+</details>
 
 ## Uninstall
 
