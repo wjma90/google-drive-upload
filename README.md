@@ -45,6 +45,7 @@
   - [First Run](#first-run)
   - [Upload](#upload)
   - [Custom Flags](#custom-flags)
+  - [Multiple Inputs](#multiple-inputs)
   - [Resuming Interrupted Uploads](#resuming-interrupted-uploads)
 - [Uninstall](#Uninstall)
 - [Reporting Issues](#reporting-issues)
@@ -412,6 +413,38 @@ These are the custom flags that are currently implemented:
 -   <strong>-D | --debug</strong>
 
     Display script command trace.
+
+    ---
+
+### Multiple Inputs
+
+For using multiple inputs at a single time, you can use the `-f/--file/--folder` flag as explained above.
+
+Now, to achieve multiple inputs without flag, it gets a little tricky. Some of them are explained below along with other usecases.
+
+e.g:
+
+-   <strong>gupload a b `or` gupload -d -o -D a b</strong>
+
+    a is file/folder and b is gdrive_folder
+
+    ---
+
+-   <strong>gupload -d -o a b c d -d</strong>
+
+    a,b,c and d are file/folder. Using multiple inputs with -f flag.
+
+    ---
+
+-   <strong>gupload a b -d c d</strong>
+
+    a and c are file/folder but b and d are gdrive folder, but since d is given at last, it will taken as gdrive folder.
+
+    ---
+
+-   <strong>gupload a b -d -o c d e</strong>
+
+    a, c, d and e is file/folder and b is gdrive_folder
 
     ---
 

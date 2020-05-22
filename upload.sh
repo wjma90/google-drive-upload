@@ -45,8 +45,9 @@ _short_help() {
 #   ${1} = uninstall - uninstall the script
 ###################################################
 _update() {
-    declare job="${1}"
-    _print_center "justify" "Fetching ${job:-update} script.." "-"
+    declare job="${1:-update}"
+    { [[ ${job} =~ uninstall ]] && job_string="--uninstall"; } || :
+    _print_center "justify" "Fetching ${job} script.." "-"
     # shellcheck source=/dev/null
     if [[ -f "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
         source "${HOME}/.google-drive-upload/google-drive-upload.info"
@@ -55,9 +56,9 @@ _update() {
     if [[ ${TYPE:-} = branch ]]; then
         if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${type_value}/install.sh")"; then
             _clear_line 1
-            bash <(printf "%s\n" "${script}") --"${job:-}"
+            bash <(printf "%s\n" "${script}") "${job_string:-}"
         else
-            _print_center "justify" "Error: Cannot download ${job:-update} script." "="
+            _print_center "justify" "Error: Cannot download ${job} script." "="
             exit 1
         fi
     else
@@ -65,9 +66,9 @@ _update() {
         latest_sha="$(_get_latest_sha release "${type_value}" "${repo}")"
         if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${latest_sha}/install.sh")"; then
             _clear_line 1
-            bash <(printf "%s\n" "${script}") --"${job:-}"
+            bash <(printf "%s\n" "${script}") "${job}"
         else
-            _print_center "justify" "Error: Cannot download ${job:-update} script." "="
+            _print_center "justify" "Error: Cannot download ${job} script." "="
             exit 1
         fi
     fi
@@ -451,7 +452,7 @@ _share_id() {
 }
 
 ###################################################
-# Process getopts flags and variables for the script
+# Process all arguments given to the script
 # Globals: 1 variable, 2 functions
 #   Variable - HOME
 #   Functions - _short_help, _remove_array_duplicates
@@ -461,7 +462,6 @@ _share_id() {
 #   Success - Set all the variables
 #   Error   - Print error message and exit
 # Reference:
-#   Parse Longoptions - https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
 #   Email Regex - https://stackoverflow.com/a/57295993
 ###################################################
 _setup_arguments() {
@@ -486,194 +486,125 @@ _setup_arguments() {
     REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
     TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
-    SHORTOPTS=":qvVi:sp:odf:ShuUr:C:Dz:-:"
-    while getopts "${SHORTOPTS}" OPTION; do
-        _check_config() {
-            { [[ ${1} = default* ]] && UPDATE_DEFAULT_CONFIG="true"; } || :
-            { [[ -r ${2} ]] && CONFIG="${2}"; } || {
-                printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
-            }
+    _check_config() {
+        { [[ ${1} = default* ]] && UPDATE_DEFAULT_CONFIG="true"; } || :
+        { [[ -r ${2} ]] && CONFIG="${2}"; } || {
+            printf "Error: Given config file (%s) doesn't exist/not readable,..\n" "${1}" 1>&2 && exit 1
         }
-        case "${OPTION}" in
-            -)
-                _check_longoptions() { { [[ -n ${!OPTIND} ]] &&
-                    printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1; } || :; }
-                case "${OPTARG}" in
-                    help)
-                        _usage
-                        ;;
-                    debug)
-                        DEBUG="true"
-                        export DEBUG
-                        ;;
-                    update)
-                        _check_debug && _update
-                        ;;
-                    uninstall)
-                        _check_debug && _update uninstall
-                        ;;
-                    info)
-                        _version_info
-                        ;;
-                    create-dir)
-                        _check_longoptions
-                        FOLDERNAME="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    root-dir)
-                        _check_longoptions
-                        ROOTDIR="${!OPTIND/default=/}"
-                        { [[ ${!OPTIND} = default* ]] && UPDATE_DEFAULT_ROOTDIR="_update_config"; } || :
-                        OPTIND=$((OPTIND + 1))
-                        ;;
-                    config)
-                        _check_longoptions
-                        _check_config "${!OPTIND}" "${!OPTIND/default=/}"
-                        OPTIND=$((OPTIND + 1))
-                        ;;
-                    save-info)
-                        _check_longoptions
-                        LOG_FILE_ID="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    skip-subdirs)
-                        SKIP_SUBDIRS="true"
-                        ;;
-                    parallel)
-                        _check_longoptions
-                        NO_OF_PARALLEL_JOBS="${!OPTIND}"
-                        case "${NO_OF_PARALLEL_JOBS}" in
-                            '' | *[!0-9]*)
-                                printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
-                                exit 1
-                                ;;
-                            *)
-                                [[ ${NO_OF_PARALLEL_JOBS} -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="${!OPTIND}"; }
-                                ;;
-                        esac
-                        PARALLEL_UPLOAD="true" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    overwrite)
-                        OVERWRITE="Overwrite" && UPLOAD_METHOD="update"
-                        ;;
-                    skip-duplicates)
-                        SKIP_DUPLICATES="true" && UPLOAD_METHOD="update"
-                        ;;
-                    file | folder)
-                        _check_longoptions
-                        INPUT_ARRAY+=("${!OPTIND}") && OPTIND=$((OPTIND + 1))
-                        ;;
-                    share)
-                        SHARE="true"
-                        EMAIL_REGEX="^([A-Za-z]+[A-Za-z0-9]*\+?((\.|\-|\_)?[A-Za-z]+[A-Za-z0-9]*)*)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
-                        if [[ -n ${!OPTIND} && ! ${!OPTIND} =~ ^(\-|\-\-) ]]; then
-                            SHARE_EMAIL="${!OPTIND}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
-                            OPTIND=$((OPTIND + 1))
-                        fi
-                        ;;
-                    quiet)
-                        QUIET="_print_center_quiet" && CURL_ARGS="-s"
-                        ;;
-                    verbose)
-                        VERBOSE="true"
-                        ;;
-                    verbose-progress)
-                        VERBOSE_PROGRESS="true" && CURL_ARGS=""
-                        ;;
-                    '')
-                        shorthelp
-                        ;;
-                    *)
-                        printf '%s: --%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
-                        ;;
-                esac
-                ;;
-            h)
+    }
+
+    _check_longoptions() {
+        { [[ -z ${2} ]] &&
+            printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1; } || :
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "${1}" in
+            -h | --help)
                 _usage
                 ;;
-            D)
+            -D | --debug)
                 DEBUG="true"
                 export DEBUG
                 ;;
-            u)
-                _check_debug && _update && exit $?
+            -u | --update)
+                _check_debug && _update
                 ;;
-            U)
-                _check_debug && _update uninstall && exit $?
+            -U | --uninstall)
+                _check_debug && _update uninstall
                 ;;
-            C)
-                FOLDERNAME="${OPTARG}"
+            --info)
+                _version_info
                 ;;
-            r)
-                ROOTDIR="${OPTARG/default=/}"
-                { [[ ${OPTARG} = default* ]] && UPDATE_DEFAULT_ROOTDIR="_update_config"; } || :
+            -C | --create-dir)
+                _check_longoptions "${1}" "${2}"
+                FOLDERNAME="${2}" && shift
                 ;;
-            z)
-                _check_config "${OPTARG}" "${OPTARG/default=/}"
+            -r | --root-dir)
+                _check_longoptions "${1}" "${2}"
+                ROOTDIR="${2/default=/}"
+                { [[ ${2} = default* ]] && UPDATE_DEFAULT_ROOTDIR="_update_config"; } || :
+                shift
                 ;;
-            i)
-                LOG_FILE_ID="${OPTARG}"
+            -z | --config)
+                _check_longoptions "${1}" "${2}"
+                _check_config "${2}" "${2/default=/}"
+                shift
                 ;;
-            s)
+            -i | --save-info)
+                _check_longoptions "${1}" "${2}"
+                LOG_FILE_ID="${2}" && shift
+                ;;
+            -s | --skip-subdirs)
                 SKIP_SUBDIRS="true"
                 ;;
-            p)
-                NO_OF_PARALLEL_JOBS="${OPTARG}"
+            -p | --parallel)
+                _check_longoptions "${1}" "${2}"
+                NO_OF_PARALLEL_JOBS="${2}"
                 case "${NO_OF_PARALLEL_JOBS}" in
                     '' | *[!0-9]*)
                         printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
                         exit 1
                         ;;
                     *)
-                        [[ ${NO_OF_PARALLEL_JOBS} -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="${OPTARG}"; }
+                        [[ ${NO_OF_PARALLEL_JOBS} -gt 10 ]] && { NO_OF_PARALLEL_JOBS=10 || NO_OF_PARALLEL_JOBS="${2}"; }
                         ;;
                 esac
-                PARALLEL_UPLOAD="true"
+                PARALLEL_UPLOAD="true" && shift
                 ;;
-            o)
+            -o | --overwrite)
                 OVERWRITE="Overwrite" && UPLOAD_METHOD="update"
                 ;;
-            d)
+            -d | --skip-duplicates)
                 SKIP_DUPLICATES="Skip Existing" && UPLOAD_METHOD="update"
                 ;;
-            f)
-                INPUT_ARRAY+=("${OPTARG}")
+            -f | --file | --folder)
+                _check_longoptions "${1}" "${2}"
+                INPUT_ARRAY+=("${2}") && shift
                 ;;
-            S)
+            -S | --share)
+                SHARE="true"
                 EMAIL_REGEX="^([A-Za-z]+[A-Za-z0-9]*\+?((\.|\-|\_)?[A-Za-z]+[A-Za-z0-9]*)*)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
-                if [[ -n ${!OPTIND} && ! ${!OPTIND} =~ ^(\-|\-\-) ]]; then
-                    SHARE_EMAIL="${!OPTIND}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
-                    OPTIND=$((OPTIND + 1))
+                if [[ -n ${1} && ! ${1} =~ ^(\-|\-\-) ]]; then
+                    SHARE_EMAIL="${2}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
+                    shift
                 fi
-                SHARE=" (SHARED)"
                 ;;
-            q)
+            -q | --quiet)
                 QUIET="_print_center_quiet" && CURL_ARGS="-s"
                 ;;
-            v)
+            -v | --verbose)
                 VERBOSE="true"
                 ;;
-            V)
+            -V | --verbose-progress)
                 VERBOSE_PROGRESS="true" && CURL_ARGS=""
                 ;;
-            :)
-                printf '%s: -%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
+            '')
+                shorthelp
                 ;;
-            ?)
-                printf '%s: -%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
+            *)
+                # Check if user meant it to be a flag
+                if [[ ${1} = -* ]]; then
+                    printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
+                else
+                    # If no "-" is detected in 1st arg, it adds to input
+                    INPUT_ARRAY+=("${1}")
+                    # if the 2nd arg available and doesn't start with "-", then set as folder input
+                    # do above only if 3rd arg is either absent or doesn't start with "-"
+                    if [[ -n ${2} && ${2} != -* ]] && { [[ -z ${3} ]] || [[ ${3} != -* ]]; }; then
+                        FOLDER_INPUT="${2}" && shift
+                    fi
+                fi
                 ;;
         esac
+        shift
     done
-    shift $((OPTIND - 1))
 
-    # Incase ${1} argument was not taken as input, check if any arguments after all the valid flags have been passed, for INPUT and FOLDERNAME.
-    # Also check, if folder or dir, else exit.
-    if [[ -z ${INPUT_ARRAY[0]} ]]; then
-        if [[ -n ${1} && -f ${1} || -d ${1} ]]; then
-            FINAL_INPUT_ARRAY+=("${1}")
-            { [[ -n ${2} && ${2} != -* ]] && FOLDER_INPUT="${2}"; } || :
-        elif [[ -z ${FOLDERNAME} ]]; then
-            _short_help
-        fi
+    # If no input, then check if -C option was used or not.
+    if [[ -z ${INPUT_ARRAY[0]} && -z ${FOLDERNAME} ]]; then
+        _short_help
     else
+        # check if given input exists ( file/folder )
         for array in "${INPUT_ARRAY[@]}"; do
             { [[ -f ${array} || -d ${array} ]] && FINAL_INPUT_ARRAY+=("${array[@]}"); } || {
                 printf "\nError: Invalid Input ( %s ), no such file or directory.\n" "${array}"
@@ -877,9 +808,9 @@ _process_arguments() {
             _print_center "normal" "${FILE_LINK}" " "
             printf "\n"
         elif [[ -d ${INPUT} ]]; then
-            INPUT="$(cd "${INPUT}" && pwd)" # to handle _dirname when current directory (.) is given as input.
-            unset EMPTY                     # Used when input folder is empty
-            parallel="${PARALLEL_UPLOAD:-}" # Unset PARALLEL value if input is file, for preserving the logging output.
+            INPUT="$(_full_path "${INPUT}")" # to handle _dirname when current directory (.) is given as input.
+            unset EMPTY                      # Used when input folder is empty
+            parallel="${PARALLEL_UPLOAD:-}"  # Unset PARALLEL value if input is file, for preserving the logging output.
 
             _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "="
             _print_center "justify" "Given Input" ": FOLDER" "-" && _newline "\n"

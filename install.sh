@@ -4,10 +4,8 @@
 _usage() {
     printf "
 The script can be used to install google-drive-upload script in your system.\n
-Usage:\n %s [options.. ]\n
-
-All flags are optional.
-
+Usage: %s [options.. ]\n
+All flags are optional.\n
 Options:\n
   -i | --interactive - Install script interactively, will ask for all the varibles one by one.\nNote: This will disregard all arguments given with below flags.\n
   -p | --path <dir_name> - Custom path where you want to install script.\nDefault Path: %s/.google-drive-upload \n
@@ -19,7 +17,7 @@ Options:\n
   -z | --config <fullpath> - Specify fullpath of the config file which will contain the credentials.\nDefault : %s/.googledrive.conf
   -U | --uninstall - Uninstall the script and remove related files.\n
   -D | --debug - Display script command trace.\n
-  -h | --help - Display usage instructions.\n\n" "${0##*/}" "${HOME}" "${HOME}"
+  -h | --help - Display usage instructions.\n" "${0##*/}" "${HOME}" "${HOME}"
     exit 0
 }
 
@@ -172,10 +170,13 @@ _dirname() {
 # Result: print full path
 ###################################################
 _full_path() {
-    case "${1?${FUNCNAME[0]}: Missing arguments}" in
-        /*) printf "%s\n" "${1}" ;;
-        *) printf "%s\n" "${PWD}/${1}" ;;
-    esac
+    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
+    declare input="${1}"
+    if [[ -f ${input} ]]; then
+        printf "%s/%s\n" "$(cd "$(_dirname "${input}")" && pwd)" "${input##*/}"
+    elif [[ -d ${input} ]]; then
+        printf "%s\n" "$(cd "${input}" && pwd)"
+    fi
 }
 
 ###################################################
@@ -225,7 +226,6 @@ _is_terminal() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare LC_ALL=C num="${2:-1}"
     grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
 }
@@ -394,7 +394,7 @@ _start_interactive() {
 #   Variables - INSTALL_PATH, INFO_PATH, UTILS_FILE, COMMAND_NAME, SHELL_RC, CONFIG,
 #               TYPE, TYPE_VALUE, REPO, __VALUES_ARRAY ( array )
 #   Functions - _print_center, _newline, _clear_line
-#               _get_latest_sha, curl --compressed, _update_config
+#               _get_latest_sha, _update_config
 # Arguments: None
 # Result: read description
 #   If cannot download, then print message and exit
@@ -440,7 +440,7 @@ _install() {
 #   Variables - INSTALL_PATH, INFO_PATH, UTILS_FILE, COMMAND_NAME, SHELL_RC, CONFIG,
 #               TYPE, TYPE_VALUE, REPO, __VALUES_ARRAY ( array )
 #   Functions - _print_center, _newline, _clear_line
-#               _get_latest_sha, curl --compressed, _update_config
+#               _get_latest_sha _update_config
 # Arguments: None
 # Result: read description
 #   If cannot download, then print message and exit
@@ -506,153 +506,93 @@ _uninstall() {
 }
 
 ###################################################
-# Process getopts flags and variables for the script
+# Process all arguments given to the script
 # Globals: 1 variable, 2 functions
 #   Variable - SHELL_RC
 #   Functions - _is_terminal, _full_path
 # Arguments: Many
 #   ${@} = Flags with arguments
 # Result: read description
-#   If no shell rc file fount, then print message and exit
-# Reference:
-#   Parse Longoptions - https://stackoverflow.com/questions/402377/using-getopts-to-process-long-and-short-command-line-options/28466267#28466267
+#   If no shell rc file found, then print message and exit
 ###################################################
 _setup_arguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    SHORTOPTS=":Dhip:r:c:RB:Us:-:"
-    while getopts "${SHORTOPTS}" OPTION; do
-        case "${OPTION}" in
-            -)
-                _check_longoptions() { { [[ -n ${!OPTIND} ]] && printf '%s: --%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1; } || :; }
-                case "${OPTARG}" in
-                    help)
-                        _usage
-                        ;;
-                    interactive)
-                        if _is_terminal; then
-                            INTERACTIVE="true"
-                            return 0
-                        else
-                            printf "Cannot start interactive mode in an non tty environment\n"
-                            exit 1
-                        fi
-                        ;;
-                    path)
-                        _check_longoptions
-                        INSTALL_PATH="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    repo)
-                        _check_longoptions
-                        REPO="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    cmd)
-                        _check_longoptions
-                        COMMAND_NAME="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    branch)
-                        _check_longoptions
-                        TYPE_VALUE="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        TYPE=branch
-                        ;;
-                    release)
-                        _check_longoptions
-                        TYPE_VALUE="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        TYPE=release
-                        ;;
-                    shell-rc)
-                        _check_longoptions
-                        SHELL_RC="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        ;;
-                    config)
-                        _check_longoptions
-                        if [[ -d "${!OPTIND}" ]]; then
-                            printf "Error: -z/--config only takes filename as argument, given input ( %s ) is a directory." "${!OPTIND}" 1>&2 && exit 1
-                        elif [[ -f "${!OPTIND}" ]]; then
-                            if [[ -r "${!OPTIND}" ]]; then
-                                CONFIG="$(_full_path "${!OPTIND}")" && OPTIND=$((OPTIND + 1))
-                            else
-                                printf "Error: Current user doesn't have read permission for given config file ( %s ).\n" "${!OPTIND}" 1>&2 && exit 1
-                            fi
-                        else
-                            CONFIG="${!OPTIND}" && OPTIND=$((OPTIND + 1))
-                        fi
-                        ;;
-                    uninstall)
-                        UNINSTALL="true"
-                        ;;
-                    debug)
-                        DEBUG=true
-                        export DEBUG
-                        ;;
-                    '')
-                        shorthelp
-                        ;;
-                    *)
-                        printf '%s: --%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
-                        ;;
-                esac
-                ;;
-            h)
+
+    _check_longoptions() {
+        { [[ -z ${2} ]] &&
+            printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1; } || :
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "${1}" in
+            -h | --help)
                 _usage
                 ;;
-            i)
+            -i | --interactive)
                 if _is_terminal; then
                     INTERACTIVE="true"
                     return 0
                 else
-                    printf "Cannot start interactive mode in an non tty environment.\n"
+                    printf "Cannot start interactive mode in an non tty environment\n"
                     exit 1
                 fi
                 ;;
-            p)
-                INSTALL_PATH="${OPTARG}"
+            -p | --path)
+                _check_longoptions "${1}" "${2}"
+                INSTALL_PATH="${2}" && shift
                 ;;
-            r)
-                REPO="${OPTARG}"
+            -r | --repo)
+                _check_longoptions "${1}" "${2}"
+                REPO="${2}" && shift
                 ;;
-            c)
-                COMMAND_NAME="${OPTARG}"
+            -c | --cmd)
+                _check_longoptions "${1}" "${2}"
+                COMMAND_NAME="${2}" && shift
                 ;;
-            B)
+            -B | --branch)
+                _check_longoptions "${1}" "${2}"
+                TYPE_VALUE="${2}" && shift
                 TYPE=branch
-                TYPE_VALUE="${OPTARG}"
                 ;;
-            R)
+            -R | --release)
+                _check_longoptions "${1}" "${2}"
+                TYPE_VALUE="${2}" && shift
                 TYPE=release
-                TYPE_VALUE="${OPTARG}"
                 ;;
-            s)
-                SHELL_RC="${OPTARG}"
+            -s | --shell-rc)
+                _check_longoptions "${1}" "${2}"
+                SHELL_RC="${2}" && shift
                 ;;
-            z)
-                if [[ -d "${OPTARG}" ]]; then
-                    printf "Error: -z/--config only takes filename as argument, given input ( %s ) is a directory." "${OPTARG}" 1>&2 && exit 1
-                elif [[ -f "${OPTARG}" ]]; then
-                    if [[ -r "${OPTARG}" ]]; then
-                        CONFIG="$(_full_path "${!OPTIND}")" && OPTIND=$((OPTIND + 1))
+            -z | --config)
+                _check_longoptions "${1}" "${2}"
+                if [[ -d "${2}" ]]; then
+                    printf "Error: -z/--config only takes filename as argument, given input ( %s ) is a directory." "${2}" 1>&2 && exit 1
+                elif [[ -f "${2}" ]]; then
+                    if [[ -r "${2}" ]]; then
+                        CONFIG="$(_full_path "${2}")" && shift
                     else
-                        printf "Error: Current user doesn't have read permission for given config file ( %s ).\n" "${OPTARG}" 1>&2 && exit 1
+                        printf "Error: Current user doesn't have read permission for given config file ( %s ).\n" "${2}" 1>&2 && exit 1
                     fi
                 else
-                    CONFIG="${OPTARG}" && OPTIND=$((OPTIND + 1))
+                    CONFIG="${2}" && shift
                 fi
                 ;;
-            U)
+            -U | --uninstall)
                 UNINSTALL="true"
                 ;;
-            D)
+            -D | --debug)
                 DEBUG=true
                 export DEBUG
                 ;;
-            :)
-                printf '%s: -%s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
+            '')
+                _short_help
                 ;;
-            ?)
-                printf '%s: -%s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${OPTARG}" "${0##*/}" && exit 1
+            *)
+                printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
                 ;;
         esac
+        shift
     done
-    shift $((OPTIND - 1))
 
     if [[ -z ${SHELL_RC} ]]; then
         printf "No default shell file found, use -s/--shell-rc to use custom rc file\n"
