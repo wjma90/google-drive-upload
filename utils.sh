@@ -210,10 +210,13 @@ _extract_id() {
 # Result: print full path
 ###################################################
 _full_path() {
-    case "${1?${FUNCNAME[0]}: Missing arguments}" in
-        /*) printf "%s\n" "${1}" ;;
-        *) printf "%s\n" "${PWD}/${1}" ;;
-    esac
+    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
+    declare input="${1}"
+    if [[ -f ${input} ]]; then
+        printf "%s/%s\n" "$(cd "$(_dirname "${input}")" && pwd)" "${input##*/}"
+    elif [[ -d ${input} ]]; then
+        printf "%s\n" "$(cd "${input}" && pwd)"
+    fi
 }
 
 ###################################################
@@ -263,7 +266,6 @@ _is_terminal() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare LC_ALL=C num="${2:-1}"
     grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
 }
