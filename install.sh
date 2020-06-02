@@ -9,7 +9,10 @@ All flags are optional.\n
 Options:\n
   -i | --interactive - Install script interactively, will ask for all the varibles one by one.\nNote: This will disregard all arguments given with below flags.\n
   -p | --path <dir_name> - Custom path where you want to install script.\nDefault Path: %s/.google-drive-upload \n
-  -c | --cmd <command_name> - Custom command name, after installation script will be available as the input argument.\nDefault Name: upload \n
+  -c | --cmd <command_name> - Custom command name, after installation script will be available as the input argument.
+      To change sync command name, use %s -c gupload sync='gsync'
+      Default upload command: gupload
+      Default sync command: gsync\n
   -r | --repo <Username/reponame> - Upload script from your custom repo,e.g --repo labbots/google-drive-upload, make sure your repo file structure is same as official repo.\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
@@ -199,7 +202,7 @@ _get_latest_sha() {
             LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | _json_value tag_name)"
             ;;
     esac
-    echo "${LATEST_SHA}"
+    printf "%s\n" "${LATEST_SHA}"
 }
 
 ###################################################
@@ -346,6 +349,7 @@ _update_config() {
 _variables() {
     REPO="labbots/google-drive-upload"
     COMMAND_NAME="gupload"
+    SYNC_COMMAND_NAME="gsync"
     INFO_PATH="${HOME}/.google-drive-upload"
     INSTALL_PATH="${HOME}/.google-drive-upload/bin"
     UTILS_FILE="utils.sh"
@@ -357,7 +361,7 @@ _variables() {
     if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
-    __VALUES_ARRAY=(REPO COMMAND_NAME INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
+    __VALUES_ARRAY=(REPO COMMAND_NAME SYNC_COMMAND_NAME INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
 }
 
 ###################################################
@@ -389,9 +393,9 @@ _start_interactive() {
 }
 
 ###################################################
-# Install the script
+# Install the upload and sync script
 # Globals: 10 variables, 6 functions
-#   Variables - INSTALL_PATH, INFO_PATH, UTILS_FILE, COMMAND_NAME, SHELL_RC, CONFIG,
+#   Variables - INSTALL_PATH, INFO_PATH, UTILS_FILE, COMMAND_NAME, SYNC_COMMAND_NAME, SHELL_RC, CONFIG,
 #               TYPE, TYPE_VALUE, REPO, __VALUES_ARRAY ( array )
 #   Functions - _print_center, _newline, _clear_line
 #               _get_latest_sha, _update_config
@@ -407,9 +411,11 @@ _install() {
     _clear_line 1
     _print_center "justify" "Latest sha fetched." "=" && _print_center "justify" "Downloading script.." "-"
     if curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/${UTILS_FILE}" -o "${INSTALL_PATH}/${UTILS_FILE}" &&
-        curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"; then
+        curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}" &&
+        curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
         sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"
-        chmod +x "${INSTALL_PATH}/${COMMAND_NAME}"
+        sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+        chmod +x "${INSTALL_PATH}"/*
         for i in "${__VALUES_ARRAY[@]}"; do
             _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
         done
@@ -422,6 +428,7 @@ _install() {
         for _ in {1..3}; do _clear_line 1; done
         _print_center "justify" "Installed Successfully" "="
         _print_center "normal" "[ Command name: ${COMMAND_NAME} ]" "="
+        _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
         _print_center "justify" "To use the command, do" "-"
         _newline "\n" && _print_center "normal" "source ${SHELL_RC}" " "
         _print_center "normal" "or" " "
@@ -458,9 +465,11 @@ _update() {
     else
         _print_center "justify" "Updating.." "-"
         if curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/${UTILS_FILE}" -o "${INSTALL_PATH}/${UTILS_FILE}" &&
-            curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"; then
+            curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}" &&
+            curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
             sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"
-            chmod +x "${INSTALL_PATH}/${COMMAND_NAME}"
+            sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+            chmod +x "${INSTALL_PATH}"/*
             for i in "${__VALUES_ARRAY[@]}"; do
                 _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
             done
@@ -491,12 +500,15 @@ _update() {
 # Arguments: None
 # Result: read description
 #   If cannot edit the SHELL_RC, then print message and exit
+#   Kill all sync jobs that are running
 ###################################################
 _uninstall() {
     _print_center "justify" "Uninstalling.." "-"
     __bak="source ${INFO_PATH}/google-drive-upload.binpath"
     if sed -i "s|${__bak}||g" "${SHELL_RC}"; then
-        rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
+        # Kill all sync jobs and remove sync folder
+        "${SYNC_COMMAND_NAME}" -k all &> /dev/null && rm -rf "${INFO_PATH}"/sync
+        rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}","${SYNC_COMMAND_NAME}"}
         rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath}
         _clear_line 1
         _print_center "justify" "Uninstall complete." "="
@@ -548,6 +560,7 @@ _setup_arguments() {
             -c | --cmd)
                 _check_longoptions "${1}" "${2}"
                 COMMAND_NAME="${2}" && shift
+                { [[ ${2} = sync* ]] && SYNC_COMMAND_NAME="${2/sync=/}" && shift; } || :
                 ;;
             -B | --branch)
                 _check_longoptions "${1}" "${2}"
