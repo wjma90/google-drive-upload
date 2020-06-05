@@ -6,7 +6,7 @@ _usage() {
 The script can be used to sync your local folder to google drive.
 
 Utilizes google-drive-upload bash scripts.\n
-Usage:\n %s [options.. ]\n
+Usage: %s [options.. ]\n
 Options:\n
   -d | --directory - Gdrive foldername.\n
   -k | --kill - to kill the background job using pid number ( -p flags ) or used with input, can be used multiple times.\n
@@ -35,10 +35,10 @@ _short_help() {
 # Globals: None
 # Arguments: 1
 #   ${1} = pid number of a sync job
-# Result: read description
+# Result: return 0 or 1
 ###################################################
 _check_pid() {
-    { ps -p "${1}" -o pid &> /dev/null && return 0; } || return 1
+    { ps -p "${1}" &> /dev/null && return 0; } || return 1
 }
 
 ###################################################
@@ -69,8 +69,8 @@ _get_job_info() {
                 printf "CPU usage:%s\n" "${extra% *}"
                 printf "Memory usage: %s\n" "${extra##* }"
                 _setup_loop_variables "${local_folder}" "${input/*"|:_//_:|"/}"
-                printf "Success: %s\n" "$(_count < "${SUCCESS}")"
-                printf "Failed: %s\n" "$(_count < "${ERROR}")"
+                printf "Success: %s\n" "$(_count < "${SUCCESS_LOG}")"
+                printf "Failed: %s\n" "$(_count < "${ERROR_LOG}")"
             fi
             return 0
         else
@@ -99,7 +99,7 @@ _remove_job() {
     printf "%s\n" "${new_list}" >| "${SYNC_LIST}"
     rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}${local_folder}"
     # Cleanup dir if empty
-    if [[ -z $(find "${SYNC_DETAIL_DIR:?}/${drive_folder}" -type f) ]]; then
+    if find "${SYNC_DETAIL_DIR:?}/${drive_folder}" -type f &> /dev/null; then
         rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}"
     fi
 }
@@ -125,7 +125,7 @@ _kill_job() {
 #   Variable - SYNC_LIST
 #   Functions - _get_job_info, _remove_job
 # Arguments: 1
-#   ${1} = v: Prints extra information ( optional )
+#   ${1} = v/verbose: Prints extra information ( optional )
 # Result: read description
 ###################################################
 _show_jobs() {
@@ -136,13 +136,11 @@ _show_jobs() {
         if [[ -n ${line} ]]; then
             : "${line/"|:_//_:|"*/}" && pid="${_/*: /}"
             _get_job_info "${pid}" "${1}" "${line}"
-            { [[ ${?} = 1 ]] && _remove_job "${pid}"; } || :
-            no_task="printf"
-            ((total += 1))
+            { [[ ${?} = 1 ]] && _remove_job "${pid}"; } || { ((total += 1)) && no_task="printf"; }
         fi
     done 4< "${SYNC_LIST}"
     printf "\nTotal Jobs Running: %s\n" "${total}"
-    "${no_task:-:}" "For more info: %s -j/--jobs v/verbose\n" "${0##*/}"
+    [[ v${1} = v ]] && "${no_task:-:}" "For more info: %s -j/--jobs v/verbose\n" "${0##*/}"
 }
 
 ###################################################
@@ -157,72 +155,72 @@ _setup_loop_variables() {
     declare folder="${1}" drive_folder="${2}"
     DIRECTORY="${SYNC_DETAIL_DIR}/${drive_folder}${folder}"
     PID_FILE="${DIRECTORY}/pid"
-    SUCCESS="${DIRECTORY}/success_list"
-    ERROR="${DIRECTORY}/failed_list"
+    SUCCESS_LOG="${DIRECTORY}/success_list"
+    ERROR_LOG="${DIRECTORY}/failed_list"
     LOGS="${DIRECTORY}/logs"
 }
 
 ###################################################
 # Create folder and files for a sync job
 # Globals: 4 variables
-#   DIRECTORY, PID_FILE, SUCCESS, ERROR
+#   DIRECTORY, PID_FILE, SUCCESS_LOG, ERROR_LOG
 # Arguments: None
 # Result: read description
 ###################################################
 _setup_loop_files() {
     mkdir -p "${DIRECTORY}"
-    for file in PID_FILE SUCCESS ERROR; do
+    for file in PID_FILE SUCCESS_LOG ERROR_LOG; do
         printf "" >> "${!file}"
     done
+    PID="$(< "${PID_FILE}")"
 }
 
 ###################################################
 # Check for new files in the sync folder and upload it
 # A list is generated everytime, success and error.
 # Globals: 4 variables, 1 function
-#   Variables - SUCCESS, ERROR, COMMAND_NAME, ARGS, GDRIVE_FOLDER
+#   Variables - SUCCESS_LOG, ERROR_LOG, COMMAND_NAME, ARGS, GDRIVE_FOLDER
 #   Function  - _remove_array_duplicates
 # Arguments: None
 # Result: read description
 ###################################################
 _check_and_upload() {
-    declare all initial final new
+    declare all initial final new_files new_file
 
-    mapfile -t initial < "${SUCCESS}"
+    mapfile -t initial < "${SUCCESS_LOG}"
 
-    mapfile -t all <<< "$(cat "${SUCCESS}" "${ERROR}")"
+    mapfile -t all <<< "$(printf "%s\n%s\n" "$(< "${SUCCESS_LOG}")" "$(< "${ERROR_LOG}")")"
+    # check if folder is empty
     { all+=(*) && [[ ${all[1]} = "*" ]] && return 0; } || :
 
     mapfile -t final <<< "$(_remove_array_duplicates "${all[@]}")"
 
-    printf "" >| "${ERROR}"
-
-    mapfile -t new <<< "$(diff \
+    mapfile -t new_files <<< "$(diff \
         --new-line-format="%L" \
         --old-line-format="" \
         --unchanged-line-format="" \
         <(printf "%s\n" "${initial[@]}") <(printf "%s\n" "${final[@]}"))"
 
-    if [[ -n ${new[0]} ]]; then
-        for i in "${new[@]}"; do
+    if [[ -n ${new_files[0]} ]]; then
+        printf "" >| "${ERROR_LOG}"
+        for new_file in "${new_files[@]}"; do
             # shellcheck disable=SC2086
-            if "${COMMAND_NAME}" "${i}" ${ARGS} -C "$GDRIVE_FOLDER"; then
-                printf "%s\n" "${i}" >> "${SUCCESS}"
+            if "${COMMAND_NAME}" "${new_file}" ${ARGS} -C "${GDRIVE_FOLDER}"; then
+                printf "%s\n" "${new_file}" >> "${SUCCESS_LOG}"
             else
-                printf "%s\n" "${i}" >> "${ERROR}"
+                printf "%s\n" "${new_file}" >> "${ERROR_LOG}"
+                printf "%s\n" "Error: Input - ${new_file}"
             fi
             printf "\n"
         done
-    else
-        printf "%s\n" "${initial[@]}" >| "${SUCCESS}"
     fi
 }
 
 ###################################################
 # Loop _check_and_upload function, sleep for sometime in between
-# Globals: 1 variable, 1 function
-#   Variable - TIME_TO_SLEEP
-#   Function - _check_and_upload
+# Globals: 1 variable, 2 function
+#   Variable - SYNC_TIME_TO_SLEEP
+#   Function - _check_and_upload, _bash_sleep
 # Arguments: None
 # Result: read description
 ###################################################
@@ -231,6 +229,30 @@ _loop() {
         _check_and_upload
         _bash_sleep "${SYNC_TIME_TO_SLEEP}"
     done
+}
+
+###################################################
+# Check if a loop exists with given input
+# Globals: 3 variables, 3 function
+#   Variable - FOLDER, PID, GDRIVE_FOLDER
+#   Function - _setup_loop_variables, _setup_loop_files, _check_pid
+# Arguments: None
+# Result: return 0 - No existing loop, 1 - loop exists, 2 - loop only in database
+#   if return 2 - then remove entry from database
+###################################################
+_check_existing_loop() {
+    _setup_loop_variables "${FOLDER}" "${GDRIVE_FOLDER}"
+    _setup_loop_files
+    if [[ -z ${PID} ]]; then
+        return 0
+    elif _check_pid "${PID}"; then
+        return 1
+    else
+        _remove_job "${PID}"
+        _setup_loop_variables "${FOLDER}" "${GDRIVE_FOLDER}"
+        _setup_loop_files
+        return 2
+    fi
 }
 
 ###################################################
@@ -493,21 +515,22 @@ _config_variables() {
 #   If a pid is detected but not running, remove that job.
 ###################################################
 _process_arguments() {
+    declare INPUT status CURRENT_FOLDER
     for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
         CURRENT_FOLDER="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
         GDRIVE_FOLDER="${GDRIVE_FOLDER:-${FOLDER##*/}}"
-        _setup_loop_variables "${FOLDER}" "${GDRIVE_FOLDER}" && _setup_loop_files
         cd "${FOLDER}" || exit 1
-        PID="$(< "${PID_FILE}")"
-        if [[ -z ${PID} ]]; then
-            _start_new_loop
-            { [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"; } || :
-        else
-            if _check_pid "${PID}"; then
+        _check_existing_loop
+        status="$?"
+        case "${status}" in
+            0 | 2)
+                _start_new_loop
+                ;;
+            1)
                 printf "%b\n" "Job is already running.."
                 if [[ -n ${INFO} ]]; then
-                    _get_job_info "${PID}" more
+                    _get_job_info "${PID}" more "PID: ${PID}|:_//_:|${FOLDER}|:_//_:|${GDRIVE_FOLDER}"
                 else
                     printf "%b\n" "Local Folder: ${INPUT}\nDrive Folder: ${GDRIVE_FOLDER}"
                     printf "%s\n" "PID: ${PID}"
@@ -517,11 +540,8 @@ _process_arguments() {
                     exit
                 fi
                 { [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"; } || :
-            else
-                _remove_job "${PID}"
-                _start_new_loop
-            fi
-        fi
+                ;;
+        esac
         cd "${CURRENT_FOLDER}" || exit 1
     done
 }

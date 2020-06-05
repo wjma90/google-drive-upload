@@ -102,7 +102,6 @@ The script explicitly requires the following programs:
 | rm            | To remove files and folders                            |
 | grep          | Miscellaneous                                          |
 | sed           | Miscellaneous                                          |
-| cat           | Miscellaneous ( only sync.sh )                         |
 | diff          | To detect new files in a folder ( only sync.sh )       |
 | ps            | To manage background jobs ( only sync.sh )             |
 | tail          | To show indefinite logs ( only sync.sh )               |
@@ -582,6 +581,8 @@ Read this section thoroughly to fully utilise the sync script, feel free to open
 -   <strong>-l | --logs</strong>
 
     To show the logs after starting a job or show log of existing job.
+
+    This option can also be used to make a job sync on foreground, rather in background, thus ctrl + c or ctrl +z can exit the job.
 
     -   By specifying local_folder and gdrive_folder,
 
