@@ -403,6 +403,12 @@ These are the custom flags that are currently implemented:
 
     ---
 
+-   <strong>--skip-internet-check</strong>
+
+    Do not check for internet connection, recommended to use in sync jobs.
+
+    ---
+
 -   <strong>-i | --save-info <file_to_save_info></strong>
 
     Save uploaded files info to the given filename."

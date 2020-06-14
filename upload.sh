@@ -21,6 +21,7 @@ Options:\n
   -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
+  --skip-internet-check - Do not check for internet connection, recommended to use in sync jobs.\n
   -u | --update - Update the installed script in your system.\n
   --info - Show detailed info, only if script is installed system wide.\n
   -U | --uninstall - Uninstall script, remove related files.\n
@@ -111,16 +112,13 @@ _version_info() {
 _drive_info() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare folder_id="${1}" fetch="${2}" token="${3}"
-    declare search_response fetched_data
+    declare search_response
 
     search_response="$(curl --compressed -s \
         -H "Authorization: Bearer ${token}" \
         "${API_URL}/drive/${API_VERSION}/files/${folder_id}?fields=${fetch}&supportsAllDrives=true")"
 
-    fetched_data="$(_json_value "${fetch}" 1 <<< "${search_response}")"
-    { [[ -z ${fetched_data} ]] && _json_value message 1 <<< "${search_response}" && return 1; } || {
-        printf "%s\n" "${fetched_data}"
-    }
+    printf "%s\n" "${search_response}"
 }
 
 ###################################################
@@ -579,6 +577,9 @@ _setup_arguments() {
             -V | --verbose-progress)
                 VERBOSE_PROGRESS="true" && CURL_ARGS=""
                 ;;
+            --skip-internet-check)
+                SKIP_INTERNET_CHECK=":"
+                ;;
             '')
                 shorthelp
                 ;;
@@ -704,11 +705,13 @@ _check_credentials() {
     _get_token_and_update() {
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
         ACCESS_TOKEN="$(_json_value access_token <<< "${RESPONSE}")"
+        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp)"
         _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
+        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
     }
     if [[ -z ${ACCESS_TOKEN} ]]; then
         _get_token_and_update
-    elif curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value error_description &> /dev/null; then
+    elif [[ ${ACCESS_TOKEN_EXPIRY} -lt "$(printf "%(%s)T\\n" "-1")" ]]; then
         _get_token_and_update
     fi
 }
@@ -722,21 +725,26 @@ _check_credentials() {
 #   ${1} = Positive integer ( amount of time in seconds to sleep )
 # Result: read description
 #   If root id not found then pribt message and exit
+#   Update config with root id and root id name if specified
 # Reference:
 #   https://github.com/dylanaraps/pure-bash-bible#use-read-as-an-alternative-to-the-sleep-command
 ###################################################
 _setup_root_dir() {
     _check_root_id() {
-        ROOT_FOLDER="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")" || {
-            { [[ ${ROOT_FOLDER} =~ "File not found" ]] && "${QUIET:-_print_center}" "justify" "Given root folder " " ID/URL invalid." "="; } || { printf "%s\n" "${ROOT_FOLDER}"; }
-            exit 1
-        }
-        if [[ -n ${ROOT_FOLDER} ]]; then
-            "${1:-_update_config}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
-        else
-            "${QUIET:-_print_center}" "justify" "Given root folder " " ID/URL invalid." "="
+        declare json
+        json="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")"
+        if ! [[ ${json} =~ "\"id\"" ]]; then
+            { [[ ${json} =~ "File not found" ]] && "${QUIET:-_print_center}" "justify" "Given root folder" " ID/URL invalid." "="; } || {
+                printf "%s\n" "${json}"
+            }
             exit 1
         fi
+        ROOT_FOLDER="$(_json_value id <<< "${json}")"
+        "${1:-_update_config}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
+    }
+    _update_root_id_name() {
+        ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" "${ACCESS_TOKEN}" | _json_value name)"
+        "${1:-_update_config}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
     }
     if [[ -n ${ROOTDIR:-} ]]; then
         ROOT_FOLDER="${ROOTDIR//[[:space:]]/}"
@@ -750,6 +758,9 @@ _setup_root_dir() {
             ROOT_FOLDER="root"
             _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         fi
+    fi
+    if [[ -z ${ROOT_FOLDER_NAME} ]]; then
+        _update_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
     fi
 }
 
@@ -766,10 +777,11 @@ _setup_root_dir() {
 _setup_workspace() {
     if [[ -z ${FOLDERNAME} ]]; then
         WORKSPACE_FOLDER_ID="${ROOT_FOLDER}"
+        WORKSPACE_FOLDER_NAME="${ROOT_FOLDER_NAME}"
     else
         WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")"
+        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name)"
     fi
-    WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}")"
 }
 
 ###################################################
@@ -1036,7 +1048,7 @@ main() {
     _check_bash_version && set -o errexit -o noclobber -o pipefail
 
     _setup_arguments "${@}"
-    _check_debug && _check_internet
+    _check_debug && "${SKIP_INTERNET_CHECK:-_check_internet}"
     _setup_tempfile
 
     START=$(printf "%(%s)T\\n" "-1")
