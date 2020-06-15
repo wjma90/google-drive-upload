@@ -214,9 +214,9 @@ _extract_id() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare LC_ALL=C ID="${1//[[:space:]]/}"
     case "${ID}" in
-        *'drive.google.com'*'id='*) ID="${ID/*id=/}" && ID="${ID/&*/}" && ID="${ID/\?*/}" ;;
-        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com/file/d/'*) ID="${ID/*\/d\//}" && ID="${ID/\/*/}" ;;
-        *'drive.google.com'*'drive'*'folders'*) ID="${ID/*\/folders\//}" && ID="${ID/&*/}" && ID="${ID/\?*/}" ;;
+        *'drive.google.com'*'id='*) ID="${ID/*id=/}" && ID="${ID/[?,&]*/}" ;;
+        *'drive.google.com'*'file/d/'* | 'http'*'docs.google.com'*'/d/'*) ID="${ID/*\/d\//}" && ID="${ID/\/*/}" && ID="${ID/[?,&]*/}" ;;
+        *'drive.google.com'*'drive'*'folders'*) ID="${ID/*\/folders\//}" && ID="${ID/[?,&]*/}" ;;
     esac
     printf "%s\n" "${ID}"
 }
@@ -286,7 +286,8 @@ _is_terminal() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    declare LC_ALL=C num="${2:-1}"
+    declare LC_ALL=C num
+    { [[ ${2} != all ]] && num=1; } || :
     grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
 }
 

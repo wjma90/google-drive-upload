@@ -100,14 +100,16 @@ elif [[ ${1} = refresh ]]; then
     # Method to regenerate access_token ( also _updates in config ).
     # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
     # Requirements: Refresh Token
-    _get_token_and__update() {
+    _get_token_and_update() {
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
         ACCESS_TOKEN="$(_json_value access_token <<< "${RESPONSE}")"
-        "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
+        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp)"
+        "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
+        "${UPDATE:-:}" ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
     }
     if [[ -n ${REFRESH_TOKEN} ]]; then
         _print_center "justify" "Required credentials set." "="
-        _get_token_and__update
+        _get_token_and_update
         _clear_line 1
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
     else
