@@ -79,8 +79,8 @@ if [[ ${1} = create ]]; then
     if [[ -n ${CODE} ]]; then
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" ${TOKEN_URL})"
 
-        ACCESS_TOKEN="$(_json_value access_token <<< "${RESPONSE}")"
-        REFRESH_TOKEN="$(_json_value refresh_token <<< "${RESPONSE}")"
+        ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
+        REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}")"
 
         if [[ -n ${ACCESS_TOKEN} && -n ${REFRESH_TOKEN} ]]; then
             "${UPDATE:-:}" REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG:-${HOME}/.googledrive.conf}"
@@ -102,8 +102,8 @@ elif [[ ${1} = refresh ]]; then
     # Requirements: Refresh Token
     _get_token_and_update() {
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
-        ACCESS_TOKEN="$(_json_value access_token <<< "${RESPONSE}")"
-        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp)"
+        ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
+        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)"
         "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
         "${UPDATE:-:}" ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
     }

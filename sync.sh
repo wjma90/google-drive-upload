@@ -191,8 +191,11 @@ _check_and_upload() {
 
     mapfile -t all <<< "$(printf "%s\n%s\n" "$(< "${SUCCESS_LOG}")" "$(< "${ERROR_LOG}")")"
     # check if folder is empty
-    { all+=(*) && [[ ${all[1]} = "*" ]] && return 0; } || :
-
+    if [[ $(printf "%b\n" ./*) = "./*" ]]; then
+        return 0
+    else
+        all+=(*)
+    fi
     mapfile -t final <<< "$(_remove_array_duplicates "${all[@]}")"
 
     mapfile -t new_files <<< "$(diff \
@@ -363,9 +366,6 @@ _setup_arguments() {
     SYNC_DETAIL_DIR="${INFO_PATH}/sync"
     SYNC_LIST="${SYNC_DETAIL_DIR}/sync_list"
     mkdir -p "${SYNC_DETAIL_DIR}" && printf "" >> "${SYNC_LIST}"
-
-    # Grab the first arg and shift, only if ${1} doesn't contain -.
-    { ! [[ ${1} = -* ]] && INPUT_ARRAY+=("${1}") && shift; } || :
 
     _check_longoptions() {
         { [[ -z ${2} ]] &&
