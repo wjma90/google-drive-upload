@@ -83,6 +83,47 @@ _check_debug() {
 }
 
 ###################################################
+# Check if the required executables are installed
+# Result: On
+#   Success - Nothing
+#   Error   - print message and exit 1
+###################################################
+_check_dependencies() {
+    declare programs_for_upload programs_for_sync error_list warning_list
+
+    programs_for_upload=(curl find xargs mkdir rm grep sed)
+    for program in "${programs_for_upload[@]}"; do
+        type "${program}" &> /dev/null || error_list+=("${program}")
+    done
+
+    if ! type file &> /dev/null && ! type mimetype &> /dev/null; then
+        error_list+=(\"file or mimetype\")
+    fi
+
+    programs_for_sync=(diff ps tail)
+    for program in "${programs_for_sync[@]}"; do
+        type "${program}" &> /dev/null || warning_list+=("${program}")
+    done
+
+    if [[ -n ${warning_list[*]} ]]; then
+        if [[ -z ${UNINSTALL} ]]; then
+            printf "Warning: "
+            printf "%b, " "${error_list[@]}"
+            printf "%b" "not found, sync script will be not installed/updated.\n"
+        fi
+        SKIP_SYNC="true"
+    fi
+
+    if [[ -n ${error_list[*]} && -z ${UNINSTALL} ]]; then
+        printf "Error: "
+        printf "%b, " "${error_list[@]}"
+        printf "%b" "not found, install before proceeding.\n"
+        exit 1
+    fi
+
+}
+
+###################################################
 # Check internet connection.
 # Probably the fastest way, takes about 1 - 2 KB of data, don't check for more than 10 secs.
 # Use alternate timeout method if possible, as curl -m option is unreliable in some cases.
@@ -421,7 +462,8 @@ _variables() {
     if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
-    __VALUES_ARRAY=(REPO COMMAND_NAME SYNC_COMMAND_NAME INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
+    { [[ -n ${SKIP_SYNC} ]] && SYNC_COMMAND_NAME=""; } || :
+    __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
 }
 
 ###################################################
@@ -440,6 +482,7 @@ _download_files() {
     fi
     for _ in {1..2}; do _clear_line 1; done
 
+    { [[ -n ${SKIP_SYNC} ]] && return; } || :
     _print_center "justify" "${SYNC_COMMAND_NAME}" "-"
     if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
         return 1
@@ -456,6 +499,7 @@ _inject_utils_path() {
     upload="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${COMMAND_NAME}")"
     printf "%s\n" "${upload}" >| "${INSTALL_PATH}/${COMMAND_NAME}"
 
+    { [[ -n ${SKIP_SYNC} ]] && return; } || :
     sync="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${SYNC_COMMAND_NAME}")"
     printf "%s\n" "${sync}" >| "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
 }
@@ -521,7 +565,9 @@ _install() {
         for _ in {1..3}; do _clear_line 1; done
         _print_center "justify" "Installed Successfully" "="
         _print_center "normal" "[ Command name: ${COMMAND_NAME} ]" "="
-        _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+        if [[ -z ${SKIP_SYNC} ]]; then
+            _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+        fi
         _print_center "justify" "To use the command, do" "-"
         _newline "\n" && _print_center "normal" "source ${SHELL_RC}" " "
         _print_center "normal" "or" " "
@@ -598,8 +644,11 @@ _uninstall() {
     if _new_rc="$(sed "s|${__bak}||g" "${SHELL_RC}")" &&
         printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
-        "${SYNC_COMMAND_NAME}" -k all &> /dev/null && rm -rf "${INFO_PATH}"/sync
-        rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}","${SYNC_COMMAND_NAME}"}
+        if [[ -z ${SKIP_SYNC} ]] && type -a "${SYNC_COMMAND_NAME}" &> /dev/null; then
+            "${SYNC_COMMAND_NAME}" -k all &> /dev/null
+            rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
+        fi
+        rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
         rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath}
         _clear_line 1
         _print_center "justify" "Uninstall complete." "="
@@ -710,12 +759,14 @@ _setup_arguments() {
 }
 
 main() {
+    _check_bash_version && _check_dependencies
+
     _variables
     if [[ $* ]]; then
         _setup_arguments "${@}"
     fi
 
-    _check_debug && _check_bash_version
+    _check_debug
 
     if [[ -n ${INTERACTIVE} ]]; then
         _start_interactive

@@ -112,6 +112,8 @@ You can install the script by automatic installation script provided in the repo
 
 This will also install the synchronisation script provided in the repo.
 
+Installation script also checks for the native dependencies.
+
 Default values set by automatic installation script, which are changeable:
 
 **Repo:** `labbots/google-drive-upload`
