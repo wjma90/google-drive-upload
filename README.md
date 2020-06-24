@@ -112,6 +112,8 @@ You can install the script by automatic installation script provided in the repo
 
 This will also install the synchronisation script provided in the repo.
 
+Installation script also checks for the native dependencies.
+
 Default values set by automatic installation script, which are changeable:
 
 **Repo:** `labbots/google-drive-upload`
@@ -503,7 +505,7 @@ Here, folder_name is the local folder you want to sync and gdrive_folder is goog
 
 In the local folder, all the contents present or added in the future will be automatically uploaded.
 
-Note: Giving gdrive_folder is optional, if you don't specify a name with -d/--directory flags, then it will take the name of the local folder.
+Note: Giving gdrive_folder is optional, if you don't specify a name with -d/--directory flags, then it will upload in the root folder set by gupload command.
 
 Also, gdrive folder creation works in the same way as gupload command.
 

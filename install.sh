@@ -17,6 +17,7 @@ Options:\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
+  --skip-internet-check - Like the flag says.\n
   -z | --config <fullpath> - Specify fullpath of the config file which will contain the credentials.\nDefault : %s/.googledrive.conf
   -U | --uninstall - Uninstall the script and remove related files.\n
   -D | --debug - Display script command trace.\n
@@ -79,6 +80,47 @@ _check_debug() {
             _print_center() { :; } && _clear_line() { :; } && _newline() { :; }
         fi
     fi
+}
+
+###################################################
+# Check if the required executables are installed
+# Result: On
+#   Success - Nothing
+#   Error   - print message and exit 1
+###################################################
+_check_dependencies() {
+    declare programs_for_upload programs_for_sync error_list warning_list
+
+    programs_for_upload=(curl find xargs mkdir rm grep sed)
+    for program in "${programs_for_upload[@]}"; do
+        type "${program}" &> /dev/null || error_list+=("${program}")
+    done
+
+    if ! type file &> /dev/null && ! type mimetype &> /dev/null; then
+        error_list+=(\"file or mimetype\")
+    fi
+
+    programs_for_sync=(diff ps tail)
+    for program in "${programs_for_sync[@]}"; do
+        type "${program}" &> /dev/null || warning_list+=("${program}")
+    done
+
+    if [[ -n ${warning_list[*]} ]]; then
+        if [[ -z ${UNINSTALL} ]]; then
+            printf "Warning: "
+            printf "%b, " "${error_list[@]}"
+            printf "%b" "not found, sync script will be not installed/updated.\n"
+        fi
+        SKIP_SYNC="true"
+    fi
+
+    if [[ -n ${error_list[*]} && -z ${UNINSTALL} ]]; then
+        printf "Error: "
+        printf "%b, " "${error_list[@]}"
+        printf "%b" "not found, install before proceeding.\n"
+        exit 1
+    fi
+
 }
 
 ###################################################
@@ -176,15 +218,15 @@ _full_path() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare input="${1}"
     if [[ -f ${input} ]]; then
-        printf "%s/%s\n" "$(cd "$(_dirname "${input}")" && pwd)" "${input##*/}"
+        printf "%s/%s\n" "$(cd "$(_dirname "${input}")" &> /dev/null && pwd)" "${input##*/}"
     elif [[ -d ${input} ]]; then
-        printf "%s\n" "$(cd "${input}" && pwd)"
+        printf "%s\n" "$(cd "${input}" &> /dev/null && pwd)"
     fi
 }
 
 ###################################################
 # Fetch latest commit sha of release or branch
-# Uses github rest api v3
+# Do not use github rest api because rate limit error occurs
 # Globals: None
 # Arguments: 3
 #   ${1} = "branch" or "release"
@@ -196,13 +238,46 @@ _get_latest_sha() {
     declare LATEST_SHA
     case "${1:-${TYPE}}" in
         branch)
-            LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}" | _json_value sha)"
+            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000 | grep "Commit\\/" -m1)" && {
+                read -r firstline <<< "${hash}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
+            })"
             ;;
         release)
-            LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | _json_value tag_name)"
+            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit" -m1)" && {
+                read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}"
+            })"
             ;;
     esac
-    printf "%s\n" "${LATEST_SHA}"
+    printf "%b" "${LATEST_SHA:+${LATEST_SHA}\n}"
+}
+
+###################################################
+# Insert line to the nth number of line, in a varible, or a file
+# Doesn't actually write to the file but print to stdout
+# Globals: None
+# Arguments: 1 and rest
+#   ${1} = line number
+#          _insert_line 1 sometext < file
+#          _insert_line 1 sometext <<< variable
+#          echo something | _insert_line 1 sometext
+#   ${@} = rest of the arguments
+#          text which will showed in the nth no of line, space is treated as newline, use quotes to avoid.
+# Result: Read description
+###################################################
+_insert_line() {
+    declare line_number="${1}" total head insert tail
+    shift
+    mapfile -t total
+    # shellcheck disable=SC2034
+    head="$(printf "%s\n" "${total[@]::$((line_number - 1))}")"
+    # shellcheck disable=SC2034
+    insert="$(printf "%s\n" "${@}")"
+    # shellcheck disable=SC2034
+    tail="$(printf "%s\n" "${total[@]:$((line_number - 1))}")"
+    for string in head insert tail; do
+        [[ -z ${!string} ]] && continue
+        printf "%s\n" "${!string}"
+    done
 }
 
 ###################################################
@@ -221,7 +296,8 @@ _is_terminal() {
 # Globals: None
 # Arguments: 2
 #   ${1} - value of field to fetch from json
-#   ${2} - Optional, nth number of value from extracted values, default it 1.
+#   ${2} - Optional, no of lines to parse
+#   ${3} - Optional, nth number of value from extracted values, default it 1.
 # Input: file | here string | pipe
 #   _json_value "Arguments" < file
 #   _json_value "Arguments <<< "${varibale}"
@@ -229,8 +305,10 @@ _is_terminal() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    declare LC_ALL=C num="${2:-1}"
-    grep -o "\"""${1}""\"\:.*" | sed -e "s/.*\"""${1}""\": //" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/\"//" -n -e "${num}"p
+    declare LC_ALL=C num
+    { [[ ${2} =~ ^([0-9]+)+$ ]] && no_of_lines="${2}"; } || :
+    { [[ ${3} =~ ^([0-9]+)+$ ]] && num="${3}"; } || { [[ ${3} != all ]] && num=1; }
+    grep -o "\"${1}\"\:.*" ${no_of_lines+-m ${no_of_lines}} | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p
 }
 
 ###################################################
@@ -264,8 +342,8 @@ _print_center() {
         justify)
             if [[ $# = 3 ]]; then
                 declare input1="${2}" symbol="${3}" TO_PRINT out
-                TO_PRINT="$((TERM_COLS * 95 / 100))"
-                { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}.. ]"; } || { out="[ ${input1} ]"; }
+                TO_PRINT="$((TERM_COLS - 5))"
+                { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}..]"; } || { out="[ ${input1} ]"; }
             else
                 declare input1="${2}" input2="${3}" symbol="${4}" TO_PRINT temp out
                 TO_PRINT="$((TERM_COLS * 40 / 100))"
@@ -317,6 +395,33 @@ _remove_array_duplicates() {
 }
 
 ###################################################
+# Alternative to timeout command
+# Globals: None
+# Arguments: 1 and rest
+#   ${1} = amount of time to sleep
+#   rest = command to execute
+# Result: Read description
+# Reference:
+#   https://stackoverflow.com/a/11056286
+###################################################
+_timeout() {
+    declare -i sleep="${1}" && shift
+    declare -i pid watcher
+    {
+        { "${@}"; } &
+        pid="${!}"
+        { read -r -t "${sleep:-10}" && kill -HUP "${pid}"; } &
+        watcher="${!}"
+        if wait "${pid}" 2> /dev/null; then
+            kill -9 "${watcher}"
+            return 0
+        else
+            return 1
+        fi
+    } &> /dev/null
+}
+
+###################################################
 # Config updater
 # Incase of old value, update, for new value add.
 # Globals: 1 function
@@ -361,7 +466,46 @@ _variables() {
     if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
-    __VALUES_ARRAY=(REPO COMMAND_NAME SYNC_COMMAND_NAME INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
+    { [[ -n ${SKIP_SYNC} ]] && SYNC_COMMAND_NAME=""; } || :
+    __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
+}
+
+###################################################
+# Download files, script and utils
+###################################################
+_download_files() {
+    _print_center "justify" "${UTILS_FILE}" "-"
+    if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/${UTILS_FILE}" -o "${INSTALL_PATH}/${UTILS_FILE}"; then
+        return 1
+    fi
+    for _ in {1..2}; do _clear_line 1; done
+
+    _print_center "justify" "${COMMAND_NAME}" "-"
+    if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"; then
+        return 1
+    fi
+    for _ in {1..2}; do _clear_line 1; done
+
+    { [[ -n ${SKIP_SYNC} ]] && return; } || :
+    _print_center "justify" "${SYNC_COMMAND_NAME}" "-"
+    if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
+        return 1
+    fi
+    for _ in {1..2}; do _clear_line 1; done
+}
+
+###################################################
+# Inject utils.sh realpath to both upload and sync scripts
+###################################################
+_inject_utils_path() {
+    declare upload sync
+
+    upload="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${COMMAND_NAME}")"
+    printf "%s\n" "${upload}" >| "${INSTALL_PATH}/${COMMAND_NAME}"
+
+    { [[ -n ${SKIP_SYNC} ]] && return; } || :
+    sync="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${SYNC_COMMAND_NAME}")"
+    printf "%s\n" "${sync}" >| "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
 }
 
 ###################################################
@@ -409,12 +553,9 @@ _install() {
     _print_center "justify" "Fetching latest sha.." "-"
     LATEST_CURRENT_SHA="$(_get_latest_sha "${TYPE}" "${TYPE_VALUE}" "${REPO}")"
     _clear_line 1
-    _print_center "justify" "Latest sha fetched." "=" && _print_center "justify" "Downloading script.." "-"
-    if curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/${UTILS_FILE}" -o "${INSTALL_PATH}/${UTILS_FILE}" &&
-        curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}" &&
-        curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
-        sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"
-        sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+    _print_center "justify" "Latest sha fetched." "=" && _print_center "justify" "Downloading scripts.." "-"
+    if _download_files; then
+        _inject_utils_path || { _print_center "justify" "Cannot edit installed files" ", check if sed program is working correctly" "=" && exit 1; }
         chmod +x "${INSTALL_PATH}"/*
         for i in "${__VALUES_ARRAY[@]}"; do
             _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
@@ -428,7 +569,9 @@ _install() {
         for _ in {1..3}; do _clear_line 1; done
         _print_center "justify" "Installed Successfully" "="
         _print_center "normal" "[ Command name: ${COMMAND_NAME} ]" "="
-        _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+        if [[ -z ${SKIP_SYNC} ]]; then
+            _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+        fi
         _print_center "justify" "To use the command, do" "-"
         _newline "\n" && _print_center "normal" "source ${SHELL_RC}" " "
         _print_center "normal" "or" " "
@@ -464,11 +607,8 @@ _update() {
         _print_center "justify" "Latest google-drive-upload already installed." "="
     else
         _print_center "justify" "Updating.." "-"
-        if curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/${UTILS_FILE}" -o "${INSTALL_PATH}/${UTILS_FILE}" &&
-            curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}" &&
-            curl --compressed -Ls "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
-            sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"
-            sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+        if _download_files; then
+            _inject_utils_path || { _print_center "justify" "Cannot edit installed files" ", check if sed program is working correctly" "=" && exit 1; }
             chmod +x "${INSTALL_PATH}"/*
             for i in "${__VALUES_ARRAY[@]}"; do
                 _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
@@ -505,10 +645,14 @@ _update() {
 _uninstall() {
     _print_center "justify" "Uninstalling.." "-"
     __bak="source ${INFO_PATH}/google-drive-upload.binpath"
-    if sed -i "s|${__bak}||g" "${SHELL_RC}"; then
+    if _new_rc="$(sed "s|${__bak}||g" "${SHELL_RC}")" &&
+        printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
-        "${SYNC_COMMAND_NAME}" -k all &> /dev/null && rm -rf "${INFO_PATH}"/sync
-        rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}","${SYNC_COMMAND_NAME}"}
+        if [[ -z ${SKIP_SYNC} ]] && type -a "${SYNC_COMMAND_NAME}" &> /dev/null; then
+            "${SYNC_COMMAND_NAME}" -k all &> /dev/null
+            rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
+        fi
+        rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
         rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath}
         _clear_line 1
         _print_center "justify" "Uninstall complete." "="
@@ -590,15 +734,15 @@ _setup_arguments() {
                     CONFIG="${2}" && shift
                 fi
                 ;;
+            --skip-internet-check)
+                SKIP_INTERNET_CHECK=":"
+                ;;
             -U | --uninstall)
                 UNINSTALL="true"
                 ;;
             -D | --debug)
                 DEBUG=true
                 export DEBUG
-                ;;
-            '')
-                _short_help
                 ;;
             *)
                 printf '%s: %s: Unknown option\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1
@@ -619,12 +763,14 @@ _setup_arguments() {
 }
 
 main() {
+    _check_bash_version && _check_dependencies
+
     _variables
     if [[ $* ]]; then
         _setup_arguments "${@}"
     fi
 
-    _check_debug && _check_bash_version
+    _check_debug
 
     if [[ -n ${INTERACTIVE} ]]; then
         _start_interactive
@@ -638,7 +784,7 @@ main() {
             exit 1
         fi
     else
-        _check_internet
+        "${SKIP_INTERNET_CHECK:-_check_internet}"
         if type -a "${COMMAND_NAME}" &> /dev/null; then
             _update
         else

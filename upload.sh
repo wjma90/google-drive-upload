@@ -58,7 +58,7 @@ _update() {
     if [[ ${TYPE:-} = branch ]]; then
         if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${type_value}/install.sh")"; then
             _clear_line 1
-            bash <(printf "%s\n" "${script}") "${job_string:-}"
+            bash <(printf "%s\n" "${script}") ${job_string:-} --skip-internet-check
         else
             _print_center "justify" "Error: Cannot download ${job} script." "="
             exit 1
@@ -68,13 +68,13 @@ _update() {
         latest_sha="$(_get_latest_sha release "${type_value}" "${repo}")"
         if script="$(curl --compressed -Ls "https://raw.githubusercontent.com/${repo}/${latest_sha}/install.sh")"; then
             _clear_line 1
-            bash <(printf "%s\n" "${script}") "${job_string:-}"
+            bash <(printf "%s\n" "${script}") ${job_string:-} --skip-internet-check
         else
             _print_center "justify" "Error: Cannot download ${job} script." "="
             exit 1
         fi
     fi
-    exit $?
+    exit "${?}"
 }
 
 ###################################################
@@ -86,7 +86,6 @@ _update() {
 # Result: read description
 ###################################################
 _version_info() {
-    # shellcheck source=/dev/null
     if [[ -f "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
         printf "%s\n" "$(< "${HOME}/.google-drive-upload/google-drive-upload.info")"
     else
@@ -146,7 +145,7 @@ _check_existing_file() {
         -H "Authorization: Bearer ${token}" \
         "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true")"
 
-    id="$(_json_value id 1 <<< "${search_response}")"
+    id="$(_json_value id 1 1 <<< "${search_response}")"
     printf "%s\n" "${id}"
 }
 
@@ -174,7 +173,7 @@ _create_directory() {
         -H "Authorization: Bearer ${token}" \
         "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true")"
 
-    folder_id="$(printf "%s\n" "${search_response}" | _json_value id 1)"
+    folder_id="$(printf "%s\n" "${search_response}" | _json_value id 1 1)"
 
     if [[ -z ${folder_id} ]]; then
         declare create_folder_post_data create_folder_response
@@ -185,7 +184,7 @@ _create_directory() {
             -H "Content-Type: application/json; charset=UTF-8" \
             -d "${create_folder_post_data}" \
             "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true")"
-        folder_id="$(_json_value id <<< "${create_folder_response}")"
+        folder_id="$(_json_value id 1 1 <<< "${create_folder_response}")"
     fi
     printf "%s\n" "${folder_id}"
 }
@@ -301,17 +300,17 @@ _upload_file() {
         }
 
         _collect_file_info() {
-            FILE_LINK="$(: "$(printf "%s\n" "${upload_body}" | _json_value id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
-            FILE_ID="$(printf "%s\n" "${upload_body}" | _json_value id)"
+            FILE_LINK="$(: "$(printf "%s\n" "${upload_body}" | _json_value id 1 1)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
+            FILE_ID="$(printf "%s\n" "${upload_body}" | _json_value id 1 1)"
             # Log to the filename provided with -i/--save-id flag.
             if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
                 # shellcheck disable=SC2129
                 # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
                 {
                     printf "%s\n" "Link: ${FILE_LINK}"
-                    : "$(printf "%s\n" "${upload_body}" | _json_value name)" && printf "%s\n" "${_/*/Name: $_}"
+                    : "$(printf "%s\n" "${upload_body}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
                     : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
-                    : "$(printf "%s\n" "${upload_body}" | _json_value mimeType)" && printf "%s\n" "${_/*/Type: $_}"
+                    : "$(printf "%s\n" "${upload_body}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
                     printf '\n'
                 } >> "${LOG_FILE_ID}"
             fi
@@ -483,17 +482,17 @@ _clone_file() {
         ${CURL_ARGS})"
     { [[ -z ${parallel} ]] && for _ in {1..2}; do _clear_line 1; done; } || :
     if [[ -n ${clone_file_response} ]]; then
-        FILE_LINK="$(: "$(printf "%s\n" "${clone_file_response}" | _json_value id)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
-        FILE_ID="$(printf "%s\n" "${clone_file_response}" | _json_value id)"
+        FILE_LINK="$(: "$(printf "%s\n" "${clone_file_response}" | _json_value id 1 1)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
+        FILE_ID="$(printf "%s\n" "${clone_file_response}" | _json_value id 1 1)"
         # Log to the filename provided with -i/--save-id flag.
         if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
             # shellcheck disable=SC2129
             # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
             {
                 printf "%s\n" "Link: ${FILE_LINK}"
-                : "$(printf "%s\n" "${clone_file_response}" | _json_value name)" && printf "%s\n" "${_/*/Name: $_}"
+                : "$(printf "%s\n" "${clone_file_response}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
                 : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "${clone_file_response}" | _json_value mimeType)" && printf "%s\n" "${_/*/Type: $_}"
+                : "$(printf "%s\n" "${clone_file_response}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
                 printf '\n'
             } >> "${LOG_FILE_ID}"
         fi
@@ -535,9 +534,9 @@ _share_id() {
         -d "${share_post_data}" \
         "${API_URL}/drive/${API_VERSION}/files/${id}/permissions")"
 
-    share_id="$(_json_value id 1 <<< "${share_response}")"
+    share_id="$(_json_value id 1 1 <<< "${share_response}")"
     if [[ -z "${share_id}" ]]; then
-        _json_value message 1 <<< "${share_response}" && return 1
+        _json_value message 1 1 <<< "${share_response}" && return 1
     fi
 }
 
@@ -568,9 +567,9 @@ _setup_arguments() {
     # Grab the first and second argument ( if 1st argument isn't a drive url ) and shift, only if ${1} doesn't contain -.
     if [[ ${1} != -* ]]; then
         if [[ ${1} =~ (drive.google.com|docs.google.com) ]]; then
-            ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift
+            { ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         else
-            LOCAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift
+            { LOCAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         fi
     fi
 
@@ -746,7 +745,7 @@ _setup_arguments() {
 ###################################################
 _setup_tempfile() {
     type -p mktemp &> /dev/null && { TMPFILE="$(mktemp -u)" || TMPFILE="${PWD}/$((RANDOM * 2)).LOG"; }
-    trap 'rm -f "${TMPFILE}"SUCCESS ; rm -f "${TMPFILE}"ERROR' EXIT
+    trap 'rm -f "${TMPFILE}"*' EXIT
 }
 
 ###################################################
@@ -796,8 +795,8 @@ _check_credentials() {
                 RESPONSE="$(curl --compressed -s -X POST \
                     --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")"
 
-                ACCESS_TOKEN="$(_json_value access_token <<< "${RESPONSE}")"
-                REFRESH_TOKEN="$(_json_value refresh_token <<< "${RESPONSE}")"
+                ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
+                REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}")"
 
                 if [[ -n ${ACCESS_TOKEN} && -n ${REFRESH_TOKEN} ]]; then
                     _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
@@ -819,8 +818,8 @@ _check_credentials() {
     # Requirements: Refresh Token
     _get_token_and_update() {
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
-        ACCESS_TOKEN="$(_json_value access_token <<< "${RESPONSE}")"
-        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp)"
+        ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
+        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)"
         _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
         _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
     }
@@ -854,7 +853,7 @@ _setup_root_dir() {
             }
             exit 1
         fi
-        ROOT_FOLDER="$(_json_value id <<< "${json}")"
+        ROOT_FOLDER="$(_json_value id 1 1 <<< "${json}")"
         "${1:-_update_config}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
     }
     _update_root_id_name() {
@@ -895,7 +894,7 @@ _setup_workspace() {
         WORKSPACE_FOLDER_NAME="${ROOT_FOLDER_NAME}"
     else
         WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")"
-        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name)"
+        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name 1 1)"
     fi
 }
 
@@ -928,7 +927,7 @@ _process_arguments() {
                 if SHARE_MSG="$(_share_id "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
                     _clear_line 1
                 else
-                    printf "%s\n" "${SHARE_MSG}"
+                    _clear_line 1 && printf "%s\n%s\n" "Error: Cannot Share." "${SHARE_MSG}"
                 fi
             fi
             _print_center "justify" "DriveLink" "${SHARE:-}" "-"
@@ -971,11 +970,11 @@ _process_arguments() {
                         _upload_file "${UPLOAD_METHOD:-create}" "{}" "${ID}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
-                        while true; do [[ -f "${TMPFILE}"SUCCESS || -f "${TMPFILE}"ERROR ]] && { break || _bash_sleep 0.5; }; done
+                        until [[ -f "${TMPFILE}"SUCCESS || -f "${TMPFILE}"ERROR ]]; do _bash_sleep 0.5; done
 
                         _newline "\n"
                         ERROR_STATUS=0 SUCCESS_STATUS=0
-                        while true; do
+                        until [[ -z $(jobs -p) ]]; do
                             SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
                             ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
                             _bash_sleep 1
@@ -983,8 +982,9 @@ _process_arguments() {
                                 _clear_line 1 && "${QUIET:-_print_center}" "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                            [[ ${TOTAL} = "${NO_OF_FILES}" ]] && break
                         done
+                        SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
+                        ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
                         for _ in {1..2}; do _clear_line 1; done
                         [[ -z ${VERBOSE:-${VERBOSE_PROGRESS}} ]] && _newline "\n\n"
                     else
@@ -1081,10 +1081,10 @@ _process_arguments() {
                         _upload_file "${UPLOAD_METHOD:-create}" "${FILETOUPLOAD}" "${DIRTOUPLOAD}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
-                        while true; do [[ -f "${TMPFILE}"SUCCESS || -f "${TMPFILE}"ERROR ]] && { break || _bash_sleep 0.5; }; done
+                        until [[ -f "${TMPFILE}"SUCCESS || -f "${TMPFILE}"ERROR ]]; do _bash_sleep 0.5; done
 
                         _clear_line 1 && _newline "\n"
-                        while true; do
+                        until [[ -z $(jobs -p) ]]; do
                             SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
                             ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
                             _bash_sleep 1
@@ -1092,8 +1092,9 @@ _process_arguments() {
                                 _clear_line 1 && "${QUIET:-_print_center}" "justify" "Status" ": ${SUCCESS_STATUS} Uploaded | ${ERROR_STATUS} Failed" "="
                             fi
                             TOTAL="$(((SUCCESS_STATUS + ERROR_STATUS)))"
-                            [[ ${TOTAL} = "${NO_OF_FILES}" ]] && break
                         done
+                        SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
+                        ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
                         _clear_line 1
 
                         [[ -z ${VERBOSE:-${VERBOSE_PROGRESS}} ]] && _newline "\n"
@@ -1126,7 +1127,7 @@ _process_arguments() {
                         if SHARE_MSG="$(_share_id "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
                             _clear_line 1
                         else
-                            printf "%s\n" "${SHARE_MSG}"
+                            _clear_line 1 && printf "%s\n%s\n" "Error: Cannot Share." "${SHARE_MSG}"
                         fi
                     fi
                     _print_center "justify" "FolderLink" "${SHARE:-}" "-"
@@ -1149,11 +1150,11 @@ _process_arguments() {
         _print_center "justify" "Given Input" ": ID" "="
         _print_center "justify" "Checking if id exists.." "-"
         json="$(_drive_info "${gdrive_id}" "name,mimeType,size" "${ACCESS_TOKEN}")" || :
-        code="$(_json_value code <<< "${json}")" || :
+        code="$(_json_value code 1 1 <<< "${json}")" || :
         if [[ -z ${code} ]]; then
-            type="$(_json_value mimeType <<< "${json}")"
-            name="$(_json_value name <<< "${json}")"
-            size="$(_json_value size <<< "${json}")"
+            type="$(_json_value mimeType all all <<< "${json}")"
+            name="$(_json_value name all all <<< "${json}")"
+            size="$(_json_value size all all <<< "${json}")"
             for _ in {1..2}; do _clear_line 1; done
             if [[ ${type} =~ folder ]]; then
                 _print_center "justify" "Folder not supported." "=" 1>&2 && continue
@@ -1169,7 +1170,7 @@ _process_arguments() {
                 if SHARE_MSG="$(_share_id "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
                     _clear_line 1
                 else
-                    printf "%s\n" "${SHARE_MSG}"
+                    _clear_line 1 && printf "%s\n%s\n" "Error: Cannot Share." "${SHARE_MSG}"
                 fi
             fi
             _print_center "justify" "DriveLink" "${SHARE:-}" "-"
@@ -1202,9 +1203,10 @@ main() {
 
     _setup_arguments "${@}"
     _check_debug && "${SKIP_INTERNET_CHECK:-_check_internet}"
-    _setup_tempfile
 
-    START=$(printf "%(%s)T\\n" "-1")
+    { [[ -n ${PARALLEL_UPLOAD} ]] && _setup_tempfile; } || :
+
+    START="$(printf "%(%s)T\\n" "-1")"
     _print_center "justify" "Starting script" "-"
 
     _print_center "justify" "Checking credentials.." "-"

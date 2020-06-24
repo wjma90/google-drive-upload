@@ -191,8 +191,11 @@ _check_and_upload() {
 
     mapfile -t all <<< "$(printf "%s\n%s\n" "$(< "${SUCCESS_LOG}")" "$(< "${ERROR_LOG}")")"
     # check if folder is empty
-    { all+=(*) && [[ ${all[1]} = "*" ]] && return 0; } || :
-
+    if [[ $(printf "%b\n" ./*) = "./*" ]]; then
+        return 0
+    else
+        all+=(*)
+    fi
     mapfile -t final <<< "$(_remove_array_duplicates "${all[@]}")"
 
     mapfile -t new_files <<< "$(diff \
@@ -205,7 +208,7 @@ _check_and_upload() {
         printf "" >| "${ERROR_LOG}"
         for new_file in "${new_files[@]}"; do
             # shellcheck disable=SC2086
-            if "${COMMAND_NAME}" "${new_file}" ${ARGS} -C "${GDRIVE_FOLDER}"; then
+            if "${COMMAND_NAME}" "${new_file}" ${ARGS}; then
                 printf "%s\n" "${new_file}" >> "${SUCCESS_LOG}"
             else
                 printf "%s\n" "${new_file}" >> "${ERROR_LOG}"
@@ -364,9 +367,6 @@ _setup_arguments() {
     SYNC_LIST="${SYNC_DETAIL_DIR}/sync_list"
     mkdir -p "${SYNC_DETAIL_DIR}" && printf "" >> "${SYNC_LIST}"
 
-    # Grab the first arg and shift, only if ${1} doesn't contain -.
-    { ! [[ ${1} = -* ]] && INPUT_ARRAY+=("${1}") && shift; } || :
-
     _check_longoptions() {
         { [[ -z ${2} ]] &&
             printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' \
@@ -385,6 +385,7 @@ _setup_arguments() {
             -d | --directory)
                 _check_longoptions "${1}" "${2}"
                 GDRIVE_FOLDER="${2}" && shift
+                ARGS+=" -C ${GDRIVE_FOLDER} "
                 ;;
             -j | --jobs)
                 { [[ ${2} = v* ]] && SHOW_JOBS_VERBOSE="true" && shift; } || :
@@ -519,7 +520,7 @@ _process_arguments() {
     for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
         CURRENT_FOLDER="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
-        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${FOLDER##*/}}"
+        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME}}"
         cd "${FOLDER}" || exit 1
         _check_existing_loop
         status="$?"
