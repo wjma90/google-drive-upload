@@ -226,7 +226,7 @@ _full_path() {
 
 ###################################################
 # Fetch latest commit sha of release or branch
-# Uses github rest api v3
+# Do not use github rest api because rate limit error occurs
 # Globals: None
 # Arguments: 3
 #   ${1} = "branch" or "release"
@@ -238,13 +238,17 @@ _get_latest_sha() {
     declare LATEST_SHA
     case "${1:-${TYPE}}" in
         branch)
-            LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}" | _json_value sha)"
+            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000 | grep "Commit\\/" -m1)" && {
+                read -r firstline <<< "${hash}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
+            })"
             ;;
         release)
-            LATEST_SHA="$(curl --compressed -s https://api.github.com/repos/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | _json_value tag_name)"
+            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit" -m1)" && {
+                read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}"
+            })"
             ;;
     esac
-    printf "%s\n" "${LATEST_SHA}"
+    printf "%b" "${LATEST_SHA:+${LATEST_SHA}\n}"
 }
 
 ###################################################
