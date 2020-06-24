@@ -966,7 +966,7 @@ _process_arguments() {
                         [[ -f ${TMPFILE}ERROR ]] && rm "${TMPFILE}"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
                         _upload_file "${UPLOAD_METHOD:-create}" "{}" "${ID}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
@@ -1074,7 +1074,7 @@ _process_arguments() {
                         [[ -f "${TMPFILE}"ERROR ]] && rm "${TMPFILE}"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "\"%s\"\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
                         LIST="{}"
                         FILETOUPLOAD="${LIST//*"|:_//_:|"}"
                         DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
