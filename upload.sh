@@ -945,6 +945,15 @@ _process_arguments() {
 
             NEXTROOTDIRID="${WORKSPACE_FOLDER_ID}"
 
+            _print_center "justify" "Processing folder.." "-"
+            # Do not create empty folders during a recursive upload. Use of find in this section is important.
+            mapfile -t DIRNAMES <<< "$(find "${INPUT}" -type d -not -empty)"
+            NO_OF_FOLDERS="${#DIRNAMES[@]}" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
+            _clear_line 1
+            if [[ ${NO_OF_SUB_FOLDERS} = 0 ]]; then
+                SKIP_SUBDIRS="true"
+            fi
+
             # Skip the sub folders and find recursively all the files and upload them.
             if [[ -n ${SKIP_SUBDIRS} ]]; then
                 _print_center "justify" "Indexing files recursively.." "-"
@@ -955,7 +964,7 @@ _process_arguments() {
                     "${QUIET:-_print_center}" "justify" "Folder: ${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "=" && printf "\n"
                     _print_center "justify" "Creating folder.." "-"
                     ID="$(_create_directory "${INPUT}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" && _clear_line 1
-                    DIRIDS[1]="${ID}"
+                    DIRIDS="${ID}"$'\n'
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
@@ -1007,28 +1016,16 @@ _process_arguments() {
                     _newline "\n" && EMPTY=1
                 fi
             else
-                _print_center "justify" "Indexing files/sub-folders" " recursively.." "-"
-                # Do not create empty folders during a recursive upload. Use of find in this section is important.
-                mapfile -t DIRNAMES <<< "$(find "${INPUT}" -type d -not -empty)"
-                NO_OF_FOLDERS="${#DIRNAMES[@]}" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
-                # Create a loop and make folders according to list made above.
-                if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
-                    _clear_line 1
-                    _print_center "justify" "${NO_OF_SUB_FOLDERS} Sub-folders found." "="
-                fi
+                _print_center "justify" "${NO_OF_SUB_FOLDERS} Sub-folders found." "="
                 _print_center "justify" "Indexing files.." "="
                 mapfile -t FILENAMES <<< "$(find "${INPUT}" -type f)"
                 if [[ -n ${FILENAMES[0]} ]]; then
                     NO_OF_FILES="${#FILENAMES[@]}"
                     for _ in {1..3}; do _clear_line 1; done
-                    if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
-                        "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders" "="
-                    else
-                        "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "="
-                    fi
+                    "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders" "="
                     _newline "\n"
                     _print_center "justify" "Creating Folder(s).." "-"
-                    { [[ ${NO_OF_SUB_FOLDERS} != 0 ]] && _newline "\n"; } || :
+                    _newline "\n"
 
                     unset status DIRIDS
                     for dir in "${DIRNAMES[@]}"; do
@@ -1038,31 +1035,26 @@ _process_arguments() {
                             NEXTROOTDIRID="$(printf "%s\n" "${__temp//"|:_//_:|"${__dir}*/}")"
                         fi
                         NEWDIR="${dir##*/}"
-                        [[ ${NO_OF_SUB_FOLDERS} != 0 ]] && _print_center "justify" "Name: ${NEWDIR}" "-"
+                        _print_center "justify" "Name: ${NEWDIR}" "-"
                         ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")"
                         # Store sub-folder directory IDs and it's path for later use.
                         ((status += 1))
-                        DIRIDS[${status}]="$(printf "%s|:_//_:|%s|:_//_:|\n" "${ID}" "${dir}" && printf "\n")"
-                        if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
-                            for _ in {1..2}; do _clear_line 1; done
-                            _print_center "justify" "Status" ": ${status} / ${NO_OF_FOLDERS}" "="
-                        fi
-                    done
-
-                    if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
+                        DIRIDS+="$(printf "%s|:_//_:|%s|:_//_:|\n" "${ID}" "${dir}")"$'\n'
                         for _ in {1..2}; do _clear_line 1; done
-                    else
-                        _clear_line 1
-                    fi
+                        _print_center "justify" "Status" ": ${status} / ${NO_OF_FOLDERS}" "="
+                    done
+                    for _ in {1..2}; do _clear_line 1; done
                     _print_center "justify" "Preparing to upload.." "-"
 
-                    unset status
-                    for file in "${FILENAMES[@]}"; do
+                    _gen_final_list() {
+                        file="${1}"
                         __rootdir="$(_dirname "${file}")"
-                        ((status += 1))
-                        FINAL_LIST[${status}]="$(printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__rootdir}|:_//_:|")" &&
-                            printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}")"
-                    done
+                        printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(grep "|:_//_:|${__rootdir}|:_//_:|" <<< "${DIRIDS}")" &&
+                            printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}"
+                    }
+
+                    export -f _gen_final_list _dirname && export DIRIDS
+                    mapfile -t FINAL_LIST <<< "$(printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-$(nproc)}" -i bash -c '_gen_final_list "{}"')"
 
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
@@ -1132,7 +1124,7 @@ _process_arguments() {
                     fi
                     _print_center "justify" "FolderLink" "${SHARE:-}" "-"
                     _is_terminal && _print_center "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                    _print_center "normal" "$(: "$(read -r firstline <<< "${DIRIDS[1]}" &&
+                    _print_center "normal" "$(: "$(read -r firstline <<< "${DIRIDS}" &&
                         printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
                 fi
                 _newline "\n"
