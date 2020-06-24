@@ -208,7 +208,7 @@ _check_and_upload() {
         printf "" >| "${ERROR_LOG}"
         for new_file in "${new_files[@]}"; do
             # shellcheck disable=SC2086
-            if "${COMMAND_NAME}" "${new_file}" ${ARGS} -C "${GDRIVE_FOLDER}"; then
+            if "${COMMAND_NAME}" "${new_file}" ${ARGS}; then
                 printf "%s\n" "${new_file}" >> "${SUCCESS_LOG}"
             else
                 printf "%s\n" "${new_file}" >> "${ERROR_LOG}"
@@ -385,6 +385,7 @@ _setup_arguments() {
             -d | --directory)
                 _check_longoptions "${1}" "${2}"
                 GDRIVE_FOLDER="${2}" && shift
+                ARGS+=" -C ${GDRIVE_FOLDER} "
                 ;;
             -j | --jobs)
                 { [[ ${2} = v* ]] && SHOW_JOBS_VERBOSE="true" && shift; } || :
@@ -519,7 +520,7 @@ _process_arguments() {
     for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
         CURRENT_FOLDER="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
-        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${FOLDER##*/}}"
+        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME}}"
         cd "${FOLDER}" || exit 1
         _check_existing_loop
         status="$?"
