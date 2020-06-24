@@ -207,6 +207,35 @@ _get_latest_sha() {
 }
 
 ###################################################
+# Insert line to the nth number of line, in a varible, or a file
+# Doesn't actually write to the file but print to stdout
+# Globals: None
+# Arguments: 1 and rest
+#   ${1} = line number
+#          _insert_line 1 sometext < file
+#          _insert_line 1 sometext <<< variable
+#          echo something | _insert_line 1 sometext
+#   ${@} = rest of the arguments
+#          text which will showed in the nth no of line, space is treated as newline, use quotes to avoid.
+# Result: Read description
+###################################################
+_insert_line() {
+    declare line_number="${1}" total head insert tail
+    shift
+    mapfile -t total
+    # shellcheck disable=SC2034
+    head="$(printf "%s\n" "${total[@]::$((line_number - 1))}")"
+    # shellcheck disable=SC2034
+    insert="$(printf "%s\n" "${@}")"
+    # shellcheck disable=SC2034
+    tail="$(printf "%s\n" "${total[@]:$((line_number - 1))}")"
+    for string in head insert tail; do
+        [[ -z ${!string} ]] && continue
+        printf "%s\n" "${!string}"
+    done
+}
+
+###################################################
 # Check if script running in a terminal
 # Globals: 1 variable
 #   TERM
@@ -419,6 +448,19 @@ _download_files() {
 }
 
 ###################################################
+# Inject utils.sh realpath to both upload and sync scripts
+###################################################
+_inject_utils_path() {
+    declare upload sync
+
+    upload="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${COMMAND_NAME}")"
+    printf "%s\n" "${upload}" >| "${INSTALL_PATH}/${COMMAND_NAME}"
+
+    sync="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${SYNC_COMMAND_NAME}")"
+    printf "%s\n" "${sync}" >| "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+}
+
+###################################################
 # Start a interactive session, asks for all the varibles.
 # Globals: 1 variable, 1 function
 #   Variable - __VALUES_ARRAY ( array )
@@ -465,8 +507,7 @@ _install() {
     _clear_line 1
     _print_center "justify" "Latest sha fetched." "=" && _print_center "justify" "Downloading scripts.." "-"
     if _download_files; then
-        sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"
-        sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+        _inject_utils_path || { _print_center "justify" "Cannot edit installed files" ", check if sed program is working correctly" "=" && exit 1; }
         chmod +x "${INSTALL_PATH}"/*
         for i in "${__VALUES_ARRAY[@]}"; do
             _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
@@ -517,8 +558,7 @@ _update() {
     else
         _print_center "justify" "Updating.." "-"
         if _download_files; then
-            sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"
-            sed -i "2a UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+            _inject_utils_path || { _print_center "justify" "Cannot edit installed files" ", check if sed program is working correctly" "=" && exit 1; }
             chmod +x "${INSTALL_PATH}"/*
             for i in "${__VALUES_ARRAY[@]}"; do
                 _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
@@ -555,7 +595,8 @@ _update() {
 _uninstall() {
     _print_center "justify" "Uninstalling.." "-"
     __bak="source ${INFO_PATH}/google-drive-upload.binpath"
-    if sed -i "s|${__bak}||g" "${SHELL_RC}"; then
+    if _new_rc="$(sed "s|${__bak}||g" "${SHELL_RC}")" &&
+        printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
         "${SYNC_COMMAND_NAME}" -k all &> /dev/null && rm -rf "${INFO_PATH}"/sync
         rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}","${SYNC_COMMAND_NAME}"}
