@@ -136,7 +136,7 @@ _drive_info() {
 ###################################################
 _check_existing_file() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare name="${1}" rootdir="${2}" token="${3}"
+    declare name="${1##*/}" rootdir="${2}" token="${3}"
     declare query search_response id
 
     query="$(_url_encode "name='${name}' and '${rootdir}' in parents and trashed=false and 'me' in writers")"
@@ -167,7 +167,7 @@ _check_existing_file() {
 ###################################################
 _create_directory() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare dirname="${1}" rootdir="${2}" token="${3}"
+    declare dirname="${1##*/}" rootdir="${2}" token="${3}"
     declare query search_response folder_id
 
     query="$(_url_encode "mimeType='application/vnd.google-apps.folder' and name='${dirname}' and trashed=false and '${rootdir}' in parents")"
