@@ -52,6 +52,7 @@
   - [Synchronisation](#synchronisation)
     - [Basic Usage](#basic-usage)
     - [Sync Script Custom Flags](#sync-script-custom-flags)
+    - [Background Sync Job](#background-sync-jobs)
 - [Uninstall](#Uninstall)
 - [Reporting Issues](#reporting-issues)
 - [Contributing](#contributing)
@@ -632,6 +633,42 @@ Read this section thoroughly to fully utilise the sync script, feel free to open
 Note: Flags that use pid number as input should be used at last, if you are not intending to provide pid number, say in case of a folder name with positive integers.
 
 </details>
+
+#### Background Sync Jobs
+
+There are basically two ways to start a background, first one we already covered in the above section.
+
+It will indefinitely run until and unless the host machine is rebooted.
+
+Now, a systemd service service can also be created which will start sync job after boot.
+
+1.  Install the systemd unit file `sudo cp -v gsync.service /etc/systemd/system/`
+
+1.  Open `/etc/systemd/system/gsync.service` with an editor of your choice and modify the following:
+
+    -   line 7, line 10 : User and ExecStart
+
+        Change `user` to your username where gupload is installed
+
+    -   line 10 : ExecStart
+
+        Change foldername to the local folder which will be synced
+
+        Add additional flags like -d for gdrive_folder, etc as per the requirements, use whatever supported by gsync
+
+    -   line 11 : ExecStop
+
+        Add everything which was added in line 10 ( ExecStart ) and add --kill to the end.
+
+        e.g: If ExecStart was `ExecStart=/home/user/.google-drive-upload/bin/gsync /home/user/foldername -d drive_folder`, then ExecStop will be `ExecStart=/home/user/.google-drive-upload/bin/gsync /home/user/foldername -d drive_folder --kill`
+
+1.  Reload the systemctl daemon so it can see your new systemd unit `sudo systemctl daemon-reload`
+
+1.  Start the service `sudo systemctl start gsync`
+
+    This is same as starting a sync job with command itself as mentioned in previous section.
+
+1.  If you want the bot to automatically start on boot, run `sudo systemctl enable gsync`
 
 ## Uninstall
 

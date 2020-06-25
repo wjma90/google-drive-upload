@@ -1,0 +1,15 @@
+[Unit]
+Description=google-drive-upload synchronisation service
+After=network.target
+
+[Service]
+Type=simple
+User=user
+Restart=always
+RestartSec=1
+ExecStart=/home/user/.google-drive-upload/bin/gsync /home/user/foldername -d drive_folder
+ExecStop=/home/user/.google-drive-upload/bin/gsync /home/user/foldername -d drive_folder --kill
+
+[Install]
+WantedBy=multi-user.target
+
