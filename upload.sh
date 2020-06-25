@@ -609,7 +609,7 @@ _setup_arguments() {
                 _usage
                 ;;
             -D | --debug)
-                DEBUG="true"
+                DEBUG="true" && CURL_ARGS="-s"
                 export DEBUG
                 ;;
             -u | --update)
@@ -680,7 +680,7 @@ _setup_arguments() {
                 fi
                 ;;
             -q | --quiet)
-                QUIET="_print_center_quiet" && CURL_ARGS="-s"
+                QUIET="_print_center_quiet"
                 ;;
             -v | --verbose)
                 VERBOSE="true"
@@ -743,6 +743,8 @@ _setup_arguments() {
     { [[ -n ${FOLDER_INPUT} && -z ${FOLDERNAME} ]] && FOLDERNAME="${FOLDER_INPUT}"; } || :
 
     { [[ -n ${VERBOSE_PROGRESS} && -n ${VERBOSE} ]] && unset "${VERBOSE}"; } || :
+
+    { [[ -n ${QUIET} ]] && CURL_ARGS="-s"; } || :
 }
 
 ###################################################
