@@ -60,7 +60,7 @@ _update() {
             _clear_line 1
             bash <(printf "%s\n" "${script}") ${job_string:-} --skip-internet-check
         else
-            _print_center "justify" "Error: Cannot download ${job} script." "="
+            _print_center "justify" "Error: Cannot download ${job} script." "=" 1>&2
             exit 1
         fi
     else
@@ -70,7 +70,7 @@ _update() {
             _clear_line 1
             bash <(printf "%s\n" "${script}") ${job_string:-} --skip-internet-check
         else
-            _print_center "justify" "Error: Cannot download ${job} script." "="
+            _print_center "justify" "Error: Cannot download ${job} script." "=" 1>&2
             exit 1
         fi
     fi
@@ -136,7 +136,7 @@ _drive_info() {
 ###################################################
 _check_existing_file() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare name="${1}" rootdir="${2}" token="${3}"
+    declare name="${1##*/}" rootdir="${2}" token="${3}"
     declare query search_response id
 
     query="$(_url_encode "name='${name}' and '${rootdir}' in parents and trashed=false and 'me' in writers")"
@@ -146,7 +146,10 @@ _check_existing_file() {
         "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true")"
 
     id="$(_json_value id 1 1 <<< "${search_response}")"
-    printf "%s\n" "${id}"
+
+    { [[ -z ${id} ]] && _json_value message 1 1 <<< "${search_response}" 1>&2 && return 1; } || {
+        printf "%s\n" "${id}"
+    }
 }
 
 ###################################################
@@ -164,7 +167,7 @@ _check_existing_file() {
 ###################################################
 _create_directory() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare dirname="${1}" rootdir="${2}" token="${3}"
+    declare dirname="${1##*/}" rootdir="${2}" token="${3}"
     declare query search_response folder_id
 
     query="$(_url_encode "mimeType='application/vnd.google-apps.folder' and name='${dirname}' and trashed=false and '${rootdir}' in parents")"
@@ -186,7 +189,9 @@ _create_directory() {
             "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true")"
         folder_id="$(_json_value id 1 1 <<< "${create_folder_response}")"
     fi
-    printf "%s\n" "${folder_id}"
+    { [[ -z ${folder_id} ]] && _json_value id 1 1 <<< "${create_folder_response}" 1>&2 && return 1; } || {
+        printf "%s\n" "${folder_id}"
+    }
 }
 
 ###################################################
@@ -233,11 +238,18 @@ _upload_file() {
         fi
     fi
 
+    _error_logging() {
+        "${QUIET:-_print_center}" "justify" "Upload ERROR" ", ${slug} not ${string}." "=" 1>&2 && [[ -z ${parallel} ]] && printf "\n\n\n" 1>&2
+        UPLOAD_STATUS="ERROR" && export UPLOAD_STATUS # Send a error status, used in folder uploads.
+    }
+
     # Set proper variables for overwriting files
     if [[ ${job} = update ]]; then
         declare existing_file_id
         # Check if file actually exists, and create if not.
-        existing_file_id=$(_check_existing_file "${slug}" "${folder_id}" "${ACCESS_TOKEN}")
+        existing_file_id="$(_check_existing_file "${slug}" "${folder_id}" "${ACCESS_TOKEN}")" || {
+            printf "%s\n" "${existing_file_id}" 1>&2 && _error_logging && return 1
+        }
         if [[ -n ${existing_file_id} ]]; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
                 SKIP_DUPLICATES_FILE_ID="${existing_file_id}"
@@ -321,11 +333,6 @@ _upload_file() {
                 for _ in {1..3}; do _clear_line 1; done
             fi
             "${QUIET:-_print_center}" "justify" "${slug} " "| ${readable_size} | ${string}" "="
-        }
-
-        _error_logging() {
-            "${QUIET:-_print_center}" "justify" "Upload link generation ERROR" ", ${slug} not ${string}." "=" 1>&2 && [[ -z ${parallel} ]] && printf "\n\n\n" 1>&2
-            UPLOAD_STATUS="ERROR" && export UPLOAD_STATUS # Send a error status, used in folder uploads.
         }
 
         # Used for resuming interrupted uploads
@@ -440,7 +447,9 @@ _clone_file() {
     if [[ ${job} = update ]]; then
         declare existing_file_id
         # Check if file actually exists.
-        existing_file_id=$(_check_existing_file "${name}" "${file_root_id}" "${token}")
+        existing_file_id=$(_check_existing_file "${name}" "${file_root_id}" "${token}") || {
+            printf "%s\n" "${existing_file_id}" 1>&2 && return 1
+        }
         if [[ -n ${existing_file_id} ]]; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
                 FILE_ID="${existing_file_id}"
@@ -521,6 +530,8 @@ _share_id() {
     declare id="${1}" token="${2}" share_email="${3}" role="reader" type="anyone"
     declare type share_post_data share_post_data share_response share_id
 
+    _print_center "justify" "Sharing.." "-"
+
     if [[ -n ${share_email} ]]; then
         type="user"
         share_post_data="{\"role\":\"${role}\",\"type\":\"${type}\",\"emailAddress\":\"${share_email}\"}"
@@ -535,9 +546,8 @@ _share_id() {
         "${API_URL}/drive/${API_VERSION}/files/${id}/permissions")"
 
     share_id="$(_json_value id 1 1 <<< "${share_response}")"
-    if [[ -z "${share_id}" ]]; then
-        _json_value message 1 1 <<< "${share_response}" && return 1
-    fi
+    _clear_line 1
+    { [[ -z "${share_id}" ]] && printf "%s\n" "Error: Cannot Share." 1>&2 && _json_value message 1 1 <<< "${share_response}" 1>&2 && return 1; } || return 0
 }
 
 ###################################################
@@ -599,7 +609,7 @@ _setup_arguments() {
                 _usage
                 ;;
             -D | --debug)
-                DEBUG="true"
+                DEBUG="true" && CURL_ARGS="-s"
                 export DEBUG
                 ;;
             -u | --update)
@@ -662,7 +672,7 @@ _setup_arguments() {
                 ID_INPUT_ARRAY+=("$(_extract_id "${2}")") && shift
                 ;;
             -S | --share)
-                SHARE=" (SHARED)"
+                SHARE="_share_id"
                 EMAIL_REGEX="^([A-Za-z]+[A-Za-z0-9]*\+?((\.|\-|\_)?[A-Za-z]+[A-Za-z0-9]*)*)@(([A-Za-z0-9]+)+((\.|\-|\_)?([A-Za-z0-9]+)+)*)+\.([A-Za-z]{2,})+$"
                 if [[ -n ${1} && ! ${1} =~ ^(\-|\-\-) ]]; then
                     SHARE_EMAIL="${2}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
@@ -670,7 +680,7 @@ _setup_arguments() {
                 fi
                 ;;
             -q | --quiet)
-                QUIET="_print_center_quiet" && CURL_ARGS="-s"
+                QUIET="_print_center_quiet"
                 ;;
             -v | --verbose)
                 VERBOSE="true"
@@ -733,6 +743,8 @@ _setup_arguments() {
     { [[ -n ${FOLDER_INPUT} && -z ${FOLDERNAME} ]] && FOLDERNAME="${FOLDER_INPUT}"; } || :
 
     { [[ -n ${VERBOSE_PROGRESS} && -n ${VERBOSE} ]] && unset "${VERBOSE}"; } || :
+
+    { [[ -n ${QUIET} ]] && CURL_ARGS="-s"; } || :
 }
 
 ###################################################
@@ -751,11 +763,11 @@ _setup_tempfile() {
 ###################################################
 # Check Oauth credentials and create/update config file
 # Client ID, Client Secret, Refesh Token and Access Token
-# Globals: 10 variables, 2 functions
+# Globals: 10 variables, 3 functions
 #   Variables - API_URL, API_VERSION, TOKEN URL,
 #               CONFIG, UPDATE_DEFAULT_CONFIG, INFO_PATH,
 #               CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN and ACCESS_TOKEN
-#   Functions - _update_config and _print_center
+#   Functions - _update_config, _json_value and _print_center
 # Arguments: None
 # Result: read description
 ###################################################
@@ -802,12 +814,13 @@ _check_credentials() {
                     _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
                     _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
                 else
-                    printf "Error: Wrong code given, make sure you copy the exact code.\n"
+                    _print_center "justify" "Error: Something went wrong" ", printing error." 1>&2
+                    printf "%s\n" "${RESPONSE}" 1>&2
                     exit 1
                 fi
             else
                 printf "\n"
-                _print_center "normal" "No code provided, run the script and try again" " "
+                _print_center "normal" "No code provided, run the script and try again" " " 1>&2
                 exit 1
             fi
         fi
@@ -819,22 +832,26 @@ _check_credentials() {
     _get_token_and_update() {
         RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
         ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
-        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)"
-        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+        if [[ -n ${ACCESS_TOKEN} ]]; then
+            ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)"
+            _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
+            _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+        else
+            _print_center "justify" "Error: Something went wrong" ", printing error." 1>&2
+            printf "%s\n" "${RESPONSE}" 1>&2
+            exit 1
+        fi
     }
-    if [[ -z ${ACCESS_TOKEN} ]]; then
-        _get_token_and_update
-    elif [[ ${ACCESS_TOKEN_EXPIRY} -lt "$(printf "%(%s)T\\n" "-1")" ]]; then
+    if [[ -z ${ACCESS_TOKEN} || ${ACCESS_TOKEN_EXPIRY} -lt "$(printf "%(%s)T\\n" "-1")" ]]; then
         _get_token_and_update
     fi
 }
 
 ###################################################
 # Setup root directory where all file/folders will be uploaded/updated
-# Globals: 6 variables, 4 functions
+# Globals: 6 variables, 5 functions
 #   Variables - ROOTDIR, ROOT_FOLDER, UPDATE_DEFAULT_ROOTDIR, CONFIG, QUIET, ACCESS_TOKEN
-#   Functions - _print_center, _drive_info, _extract_id, _update_config
+#   Functions - _print_center, _drive_info, _extract_id, _update_config, _json_value
 # Arguments: 1
 #   ${1} = Positive integer ( amount of time in seconds to sleep )
 # Result: read description
@@ -848,18 +865,19 @@ _setup_root_dir() {
         declare json
         json="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")"
         if ! [[ ${json} =~ "\"id\"" ]]; then
-            { [[ ${json} =~ "File not found" ]] && "${QUIET:-_print_center}" "justify" "Given root folder" " ID/URL invalid." "="; } || {
-                printf "%s\n" "${json}"
+            { [[ ${json} =~ "File not found" ]] && "${QUIET:-_print_center}" "justify" "Given root folder" " ID/URL invalid." "=" 1>&2; } || {
+                _json_value message 1 1 <<< "${json}" 1>&2
             }
             exit 1
         fi
         ROOT_FOLDER="$(_json_value id 1 1 <<< "${json}")"
-        "${1:-_update_config}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
+        "${1:-:}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
     }
     _update_root_id_name() {
         ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" "${ACCESS_TOKEN}" | _json_value name)"
-        "${1:-_update_config}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
+        "${1:-:}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
     }
+
     if [[ -n ${ROOTDIR:-} ]]; then
         ROOT_FOLDER="${ROOTDIR//[[:space:]]/}"
         { [[ -n ${ROOT_FOLDER} ]] && _check_root_id "${UPDATE_DEFAULT_ROOTDIR}"; } || :
@@ -873,28 +891,30 @@ _setup_root_dir() {
             _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         fi
     fi
-    if [[ -z ${ROOT_FOLDER_NAME} ]]; then
-        _update_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
-    fi
+    { [[ -z ${ROOT_FOLDER_NAME} ]] && _update_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"; } || :
 }
 
 ###################################################
 # Setup Workspace folder
 # Check if the given folder exists in google drive.
 # If not then the folder is created in google drive under the configured root folder.
-# Globals: 3 variables, 2 functions
+# Globals: 3 variables, 3 functions
 #   Variables - FOLDERNAME, ROOT_FOLDER, ACCESS_TOKEN
-#   Functions - _create_directory, _drive_info
+#   Functions - _create_directory, _drive_info, _json_value
 # Arguments: None
-# Result: read description
+# Result: Read Description
 ###################################################
 _setup_workspace() {
     if [[ -z ${FOLDERNAME} ]]; then
         WORKSPACE_FOLDER_ID="${ROOT_FOLDER}"
         WORKSPACE_FOLDER_NAME="${ROOT_FOLDER_NAME}"
     else
-        WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")"
-        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name 1 1)"
+        WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")" || {
+            _json_value message 1 1 "${WORKSPACE_FOLDER_ID}" 1>&2 && exit 1
+        }
+        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name 1 1)" || {
+            _json_value message 1 1 "${WORKSPACE_FOLDER_NAME}" 1>&2 && exit 1
+        }
     fi
 }
 
@@ -922,15 +942,8 @@ _process_arguments() {
             _upload_file "${UPLOAD_METHOD:-create}" "${INPUT}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}"
             FILE_ID="${SKIP_DUPLICATES_FILE_ID:-${FILE_ID}}"
             [[ ${UPLOAD_STATUS} = ERROR ]] && for _ in {1..2}; do _clear_line 1; done && continue
-            if [[ -n "${SHARE}" ]]; then
-                _print_center "justify" "Sharing the file.." "-"
-                if SHARE_MSG="$(_share_id "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
-                    _clear_line 1
-                else
-                    _clear_line 1 && printf "%s\n%s\n" "Error: Cannot Share." "${SHARE_MSG}"
-                fi
-            fi
-            _print_center "justify" "DriveLink" "${SHARE:-}" "-"
+            "${SHARE:-:}" "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
+            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
             _is_terminal && _print_center "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
             _print_center "normal" "${FILE_LINK}" " "
             printf "\n"
@@ -945,6 +958,15 @@ _process_arguments() {
 
             NEXTROOTDIRID="${WORKSPACE_FOLDER_ID}"
 
+            _print_center "justify" "Processing folder.." "-"
+            # Do not create empty folders during a recursive upload. Use of find in this section is important.
+            mapfile -t DIRNAMES <<< "$(find "${INPUT}" -type d -not -empty)"
+            NO_OF_FOLDERS="${#DIRNAMES[@]}" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
+            _clear_line 1
+            if [[ ${NO_OF_SUB_FOLDERS} = 0 ]]; then
+                SKIP_SUBDIRS="true"
+            fi
+
             # Skip the sub folders and find recursively all the files and upload them.
             if [[ -n ${SKIP_SUBDIRS} ]]; then
                 _print_center "justify" "Indexing files recursively.." "-"
@@ -954,8 +976,11 @@ _process_arguments() {
                     for _ in {1..2}; do _clear_line 1; done
                     "${QUIET:-_print_center}" "justify" "Folder: ${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "=" && printf "\n"
                     _print_center "justify" "Creating folder.." "-"
-                    ID="$(_create_directory "${INPUT}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" && _clear_line 1
-                    DIRIDS[1]="${ID}"
+                    ID="$(_create_directory "${INPUT}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" || {
+                        printf "%s\n" "${ID}" 1>&2 && return 1
+                    }
+                    _clear_line 1
+                    DIRIDS="${ID}"$'\n'
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
@@ -966,7 +991,7 @@ _process_arguments() {
                         [[ -f ${TMPFILE}ERROR ]] && rm "${TMPFILE}"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
                         _upload_file "${UPLOAD_METHOD:-create}" "{}" "${ID}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
@@ -1007,28 +1032,16 @@ _process_arguments() {
                     _newline "\n" && EMPTY=1
                 fi
             else
-                _print_center "justify" "Indexing files/sub-folders" " recursively.." "-"
-                # Do not create empty folders during a recursive upload. Use of find in this section is important.
-                mapfile -t DIRNAMES <<< "$(find "${INPUT}" -type d -not -empty)"
-                NO_OF_FOLDERS="${#DIRNAMES[@]}" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
-                # Create a loop and make folders according to list made above.
-                if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
-                    _clear_line 1
-                    _print_center "justify" "${NO_OF_SUB_FOLDERS} Sub-folders found." "="
-                fi
+                _print_center "justify" "${NO_OF_SUB_FOLDERS} Sub-folders found." "="
                 _print_center "justify" "Indexing files.." "="
                 mapfile -t FILENAMES <<< "$(find "${INPUT}" -type f)"
                 if [[ -n ${FILENAMES[0]} ]]; then
                     NO_OF_FILES="${#FILENAMES[@]}"
                     for _ in {1..3}; do _clear_line 1; done
-                    if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
-                        "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders" "="
-                    else
-                        "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "="
-                    fi
+                    "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders" "="
                     _newline "\n"
                     _print_center "justify" "Creating Folder(s).." "-"
-                    { [[ ${NO_OF_SUB_FOLDERS} != 0 ]] && _newline "\n"; } || :
+                    _newline "\n"
 
                     unset status DIRIDS
                     for dir in "${DIRNAMES[@]}"; do
@@ -1038,31 +1051,28 @@ _process_arguments() {
                             NEXTROOTDIRID="$(printf "%s\n" "${__temp//"|:_//_:|"${__dir}*/}")"
                         fi
                         NEWDIR="${dir##*/}"
-                        [[ ${NO_OF_SUB_FOLDERS} != 0 ]] && _print_center "justify" "Name: ${NEWDIR}" "-"
-                        ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")"
+                        _print_center "justify" "Name: ${NEWDIR}" "-"
+                        ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" || {
+                            printf "%s\n" "${ID}" 1>&2 && return 1
+                        }
                         # Store sub-folder directory IDs and it's path for later use.
                         ((status += 1))
-                        DIRIDS[${status}]="$(printf "%s|:_//_:|%s|:_//_:|\n" "${ID}" "${dir}" && printf "\n")"
-                        if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
-                            for _ in {1..2}; do _clear_line 1; done
-                            _print_center "justify" "Status" ": ${status} / ${NO_OF_FOLDERS}" "="
-                        fi
-                    done
-
-                    if [[ ${NO_OF_SUB_FOLDERS} != 0 ]]; then
+                        DIRIDS+="$(printf "%s|:_//_:|%s|:_//_:|\n" "${ID}" "${dir}")"$'\n'
                         for _ in {1..2}; do _clear_line 1; done
-                    else
-                        _clear_line 1
-                    fi
+                        _print_center "justify" "Status" ": ${status} / ${NO_OF_FOLDERS}" "="
+                    done
+                    for _ in {1..2}; do _clear_line 1; done
                     _print_center "justify" "Preparing to upload.." "-"
 
-                    unset status
-                    for file in "${FILENAMES[@]}"; do
+                    _gen_final_list() {
+                        file="${1}"
                         __rootdir="$(_dirname "${file}")"
-                        ((status += 1))
-                        FINAL_LIST[${status}]="$(printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(printf "%s\n" "${DIRIDS[@]}" | grep "|:_//_:|${__rootdir}|:_//_:|")" &&
-                            printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}")"
-                    done
+                        printf "%s\n" "${__rootdir}|:_//_:|$(__temp="$(grep "|:_//_:|${__rootdir}|:_//_:|" <<< "${DIRIDS}")" &&
+                            printf "%s\n" "${__temp//"|:_//_:|"${__rootdir}*/}")|:_//_:|${file}"
+                    }
+
+                    export -f _gen_final_list _dirname && export DIRIDS
+                    mapfile -t FINAL_LIST <<< "$(printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-$(nproc)}" -i bash -c '_gen_final_list "{}"')"
 
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
@@ -1074,7 +1084,7 @@ _process_arguments() {
                         [[ -f "${TMPFILE}"ERROR ]] && rm "${TMPFILE}"ERROR
 
                         # shellcheck disable=SC2016
-                        printf "%s\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "\"%s\"\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
                         LIST="{}"
                         FILETOUPLOAD="${LIST//*"|:_//_:|"}"
                         DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
@@ -1122,17 +1132,10 @@ _process_arguments() {
                 [[ -z ${VERBOSE:-${VERBOSE_PROGRESS}} ]] && for _ in {1..2}; do _clear_line 1; done
 
                 if [[ ${SUCCESS_STATUS} -gt 0 ]]; then
-                    if [[ -n ${SHARE} ]]; then
-                        _print_center "justify" "Sharing the folder.." "-"
-                        if SHARE_MSG="$(_share_id "$(read -r firstline <<< "${DIRIDS[1]}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
-                            _clear_line 1
-                        else
-                            _clear_line 1 && printf "%s\n%s\n" "Error: Cannot Share." "${SHARE_MSG}"
-                        fi
-                    fi
-                    _print_center "justify" "FolderLink" "${SHARE:-}" "-"
+                    "${SHARE:-:}" "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
+                    _print_center "justify" "FolderLink" "${SHARE:+ (SHARED)}" "-"
                     _is_terminal && _print_center "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                    _print_center "normal" "$(: "$(read -r firstline <<< "${DIRIDS[1]}" &&
+                    _print_center "normal" "$(: "$(read -r firstline <<< "${DIRIDS}" &&
                         printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
                 fi
                 _newline "\n"
@@ -1141,7 +1144,7 @@ _process_arguments() {
                 printf "\n"
             else
                 for _ in {1..2}; do _clear_line 1; done
-                "${QUIET:-_print_center}" 'justify' "Empty Folder." "-"
+                "${QUIET:-_print_center}" 'justify' "Empty Folder." "-" 1>&2
                 printf "\n"
             fi
         fi
@@ -1152,12 +1155,12 @@ _process_arguments() {
         json="$(_drive_info "${gdrive_id}" "name,mimeType,size" "${ACCESS_TOKEN}")" || :
         code="$(_json_value code 1 1 <<< "${json}")" || :
         if [[ -z ${code} ]]; then
-            type="$(_json_value mimeType all all <<< "${json}")"
-            name="$(_json_value name all all <<< "${json}")"
-            size="$(_json_value size all all <<< "${json}")"
+            type="$(_json_value mimeType 1 1 <<< "${json}")" || :
+            name="$(_json_value name 1 1 <<< "${json}")" || :
+            size="$(_json_value size 1 1 <<< "${json}")" || :
             for _ in {1..2}; do _clear_line 1; done
             if [[ ${type} =~ folder ]]; then
-                _print_center "justify" "Folder not supported." "=" 1>&2 && continue
+                _print_center "justify" "Folder not supported." "=" 1>&2 && _newline "\n" 1>&2 && continue
                 ## TODO: Add support to clone folders
             else
                 _print_center "justify" "Given Input" ": File ID" "="
@@ -1165,15 +1168,8 @@ _process_arguments() {
                 _clone_file "${UPLOAD_METHOD:-create}" "${gdrive_id}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}" "${name}" "${size}"
                 [[ ${UPLOAD_STATUS} = ERROR ]] && for _ in {1..2}; do _clear_line 1; done && continue
             fi
-            if [[ -n "${SHARE}" ]]; then
-                _print_center "justify" "Sharing the file.." "-"
-                if SHARE_MSG="$(_share_id "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}")"; then
-                    _clear_line 1
-                else
-                    _clear_line 1 && printf "%s\n%s\n" "Error: Cannot Share." "${SHARE_MSG}"
-                fi
-            fi
-            _print_center "justify" "DriveLink" "${SHARE:-}" "-"
+            "${SHARE:-:}" "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
+            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
             _is_terminal && _print_center "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
             _print_center "normal" "${FILE_LINK}" " "
             printf "\n"

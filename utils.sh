@@ -74,6 +74,7 @@ _check_debug() {
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
                 fi
             else
+                CURL_ARGS="-s" && export CURL_ARGS
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 _clear_line() { :; }
             fi

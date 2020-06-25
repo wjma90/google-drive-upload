@@ -89,11 +89,12 @@ if [[ ${1} = create ]]; then
             printf "Access Token: %s\n" "${ACCESS_TOKEN}"
             printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
         else
-            _print_center "normal" "Error: Wrong code given, make sure you copy the exact code." "="
+            _print_center "justify" "Error: Something went wrong" ", printing error." 1>&2
+            printf "%s\n" "${RESPONSE}" 1>&2
             exit 1
         fi
     else
-        _print_center "justify" "No code provided, run the script and try again." "="
+        _print_center "justify" "No code provided, run the script and try again." "=" 1>&2
         exit 1
     fi
 elif [[ ${1} = refresh ]]; then
