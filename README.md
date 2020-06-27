@@ -624,6 +624,34 @@ Read this section thoroughly to fully utilise the sync script, feel free to open
 
     ---
 
+-   <strong>-fg | --foreground</strong>
+
+    This will run the job in foreground and show the logs.
+
+    Note: A already running job cannot be resumed in foreground, it will just show the existing logs.
+
+    ---
+
+-   <strong>-c | --command command_name</strong>
+
+    Incase if gupload command installed with any other name or to use in systemd service, which requires fullpath.
+
+    ---
+
+-   <strong>--sync-detail-dir 'dirname'</strong>
+
+    Directory where a job information will be stored.
+
+    Default: ${HOME}/.google-drive-upload
+
+-   <strong>-s | --service 'service name'</strong>
+
+    To generate systemd service file to setup background jobs on boot.
+
+    Note: If this command is used, then only service files are created, no other work is done.
+
+    ---
+
 -   <strong>-d | --debug</strong>
 
     Display script command trace, use before all the flags to see maximum script trace.
@@ -636,39 +664,41 @@ Note: Flags that use pid number as input should be used at last, if you are not 
 
 #### Background Sync Jobs
 
-There are basically two ways to start a background, first one we already covered in the above section.
+There are basically two ways to start a background job, first one we already covered in the above section.
 
 It will indefinitely run until and unless the host machine is rebooted.
 
 Now, a systemd service service can also be created which will start sync job after boot.
 
-1.  Install the systemd unit file `sudo cp -v gsync.service /etc/systemd/system/`
+1.  To generate a systemd unit file, run the sync command with `--service service_name` at the end.
 
-1.  Open `/etc/systemd/system/gsync.service` with an editor of your choice and modify the following:
+    e.g: If `gsync foldername -d drive_folder --service myservice`, where, myservice can be any name desired.
 
-    -   line 7, line 10 : User and ExecStart
+    This will generate a script and print the next required commands to start/stop/enable/disable the service.
 
-        Change `user` to your username where gupload is installed
+    The commands that will be printed is explained below:
 
-    -   line 10 : ExecStart
-
-        Change foldername to the local folder which will be synced
-
-        Add additional flags like -d for gdrive_folder, etc as per the requirements, use whatever supported by gsync
-
-    -   line 11 : ExecStop
-
-        Add everything which was added in line 10 ( ExecStart ) and add --kill to the end.
-
-        e.g: If ExecStart was `ExecStart=/home/user/.google-drive-upload/bin/gsync /home/user/foldername -d drive_folder`, then ExecStop will be `ExecStart=/home/user/.google-drive-upload/bin/gsync /home/user/foldername -d drive_folder --kill`
-
-1.  Reload the systemctl daemon so it can see your new systemd unit `sudo systemctl daemon-reload`
-
-1.  Start the service `sudo systemctl start gsync`
+1.  Start the service `bash gsync-test.service.sh start`, where gsync-test is the service name
 
     This is same as starting a sync job with command itself as mentioned in previous section.
 
-1.  If you want the bot to automatically start on boot, run `sudo systemctl enable gsync`
+    To stop: `bash gsync-test.service.sh stop`
+
+1.  If you want the job to automatically start on boot, run `bash gsync-test.service.sh enable`
+
+    To disable: `bash gsync-test.service.sh disable`
+
+1.  To see logs after a job has been started.
+
+    `bash gsync-test.service.sh logs`
+
+1.  To remove a job from system, `bash gsync-test.service.sh remove`
+
+You can use multiple commands at once, e.g: `bash gsync-test.service.sh start logs`, will start and show the logs.
+
+Note: The script is merely a wrapper, it uses `systemctl` to start/stop/enable/disable the service and `journalctl` is used to show the logs.
+
+Extras: A sample service file has been provided in the repo just for reference, it is recommended to use gsync to generate the service file.
 
 ## Uninstall
 
