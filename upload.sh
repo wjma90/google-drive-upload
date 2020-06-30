@@ -878,6 +878,8 @@ _setup_root_dir() {
         "${1:-:}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
     }
 
+    { [[ -n ${ROOT_FOLDER} && -z ${ROOT_FOLDER_NAME} ]] && _update_root_id_name _update_config; } || :
+
     if [[ -n ${ROOTDIR:-} ]]; then
         ROOT_FOLDER="${ROOTDIR//[[:space:]]/}"
         { [[ -n ${ROOT_FOLDER} ]] && _check_root_id "${UPDATE_DEFAULT_ROOTDIR}"; } || :
@@ -891,6 +893,7 @@ _setup_root_dir() {
             _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         fi
     fi
+
     { [[ -z ${ROOT_FOLDER_NAME} ]] && _update_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"; } || :
 }
 

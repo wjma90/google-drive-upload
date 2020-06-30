@@ -20,6 +20,11 @@ Options:\n
      Note: If multiple pid numbers or inputs are used, then will only show log of first input as it goes on forever.
   -a | --arguments - Additional arguments for gupload commands. e.g: %s -a '-q -o -p 4 -d'.\n
      To set some arguments by default, use %s -a default='-q -o -p 4 -d'.\n
+  -fg | --foreground - This will run the job in foreground and show the logs.\n
+  -c | --command 'command name'- Incase if gupload command installed with any other name or to use in systemd service.\n
+  --sync-detail-dir 'dirname' - Directory where a job information will be stored.
+     Default: ${HOME}/.google-drive-upload\n
+  -s | --service 'service name' - To generate systemd service file to setup background jobs on boot.\n
   -D | --debug - Display script command trace, use before all the flags to see maximum script trace.\n
   -h | --help - Display usage instructions.\n" "${0##*/}" "${0##*/}" "${0##*/}" "${0##*/}"
     exit
@@ -261,21 +266,26 @@ _check_existing_loop() {
 ###################################################
 # Start a new sync job by _loop function
 # Print sync job information
-# Globals: 6 variables, 1 function
-#   Variable - LOGS, PID_FILE, INPUT, GDRIVE_FOLDER, FOLDER, SYNC_LIST
+# Globals: 7 variables, 1 function
+#   Variable - LOGS, PID_FILE, INPUT, GDRIVE_FOLDER, FOLDER, SYNC_LIST, FOREGROUND
 #   Function - _loop
 # Arguments: None
 # Result: read description
 #   Show logs at last and don't hangup if SHOW_LOGS is set
 ###################################################
 _start_new_loop() {
-    _loop &> "${LOGS}" &
-    printf "%s\n" "$!" >| "${PID_FILE}"
-    PID="$(< "${PID_FILE}")"
-    printf "%b\n" "Job started.\nLocal Folder: ${INPUT}\nDrive Folder: ${GDRIVE_FOLDER}"
-    printf "%s\n" "PID: ${PID}"
-    printf "%b\n" "PID: ${PID}|:_//_:|${FOLDER}|:_//_:|${GDRIVE_FOLDER}" >> "${SYNC_LIST}"
-    { [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"; } || :
+    if [[ -n ${FOREGROUND} ]]; then
+        printf "%b\n" "Local Folder: ${INPUT}\nDrive Folder: ${GDRIVE_FOLDER}\n"
+        _loop
+    else
+        (_loop &> "${LOGS}") &
+        PID="${!}"
+        printf "%s\n" "${PID}" >| "${PID_FILE}"
+        printf "%b\n" "Job started.\nLocal Folder: ${INPUT}\nDrive Folder: ${GDRIVE_FOLDER}"
+        printf "%s\n" "PID: ${PID}"
+        printf "%b\n" "PID: ${PID}|:_//_:|${FOLDER}|:_//_:|${GDRIVE_FOLDER}" >> "${SYNC_LIST}"
+        { [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"; } || :
+    fi
 }
 
 ###################################################
@@ -362,11 +372,6 @@ _setup_arguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare -g SYNC_TIME_TO_SLEEP ARGS COMMAND_NAME DEBUG GDRIVE_FOLDER KILL SHOW_LOGS
 
-    INFO_PATH="${HOME}/.google-drive-upload"
-    SYNC_DETAIL_DIR="${INFO_PATH}/sync"
-    SYNC_LIST="${SYNC_DETAIL_DIR}/sync_list"
-    mkdir -p "${SYNC_DETAIL_DIR}" && printf "" >> "${SYNC_LIST}"
-
     _check_longoptions() {
         { [[ -z ${2} ]] &&
             printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' \
@@ -431,6 +436,23 @@ _setup_arguments() {
                 { [[ ${2} = default* ]] && UPDATE_DEFAULT_ARGS="_update_config"; } || :
                 ARGS+="${2/default=/} " && shift
                 ;;
+            -fg | --foreground)
+                FOREGROUND="true"
+                SHOW_LOGS="true"
+                ;;
+            -c | --command)
+                _check_longoptions "${1}" "${2}"
+                CUSTOM_COMMAND_NAME="${2}" && shift
+                ;;
+            --sync-detail-dir)
+                _check_longoptions "${1}" "${2}"
+                SYNC_DETAIL_DIR="${2}" && shift
+                ;;
+            -s | --service)
+                _check_longoptions "${1}" "${2}"
+                SERVICE_NAME="${2}" && shift
+                CREATE_SERVICE="true"
+                ;;
             '')
                 shorthelp
                 ;;
@@ -446,6 +468,11 @@ _setup_arguments() {
         esac
         shift
     done
+
+    INFO_PATH="${HOME}/.google-drive-upload"
+    SYNC_DETAIL_DIR="${SYNC_DETAIL_DIR:-${INFO_PATH}/sync}"
+    SYNC_LIST="${SYNC_DETAIL_DIR}/sync_list"
+    mkdir -p "${SYNC_DETAIL_DIR}" && printf "" >> "${SYNC_LIST}"
 
     _do_job
 
@@ -483,8 +510,10 @@ _config_variables() {
         exit 1
     fi
 
+    COMMAND_NAME="${CUSTOM_COMMAND_NAME:-${COMMAND_NAME}}"
+
     # Check if command exist, not necessary but just in case.
-    if ! type "${COMMAND_NAME}" &> /dev/null; then
+    if ! command -v "${COMMAND_NAME}" &> /dev/null; then
         printf "Error: %s is not installed, use -c/--command to specify.\n" "${COMMAND_NAME}" 1>&2
         exit 1
     fi
@@ -520,7 +549,68 @@ _process_arguments() {
     for INPUT in "${FINAL_INPUT_ARRAY[@]}"; do
         CURRENT_FOLDER="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
-        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME}}"
+        GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME:-Unknown}}"
+        if [[ -n ${CREATE_SERVICE} ]]; then
+            ALL_ARGUMNETS="\"${FOLDER}\" ${TO_SLEEP:+-t \"${TO_SLEEP}\"} -a \"${ARGS//  / }\""
+            # shellcheck disable=SC2016
+            CONTENTS='# Systemd service file - start
+[Unit]
+Description=google-drive-upload synchronisation service
+After=network.target
+
+[Service]
+Type=simple
+User='"'${LOGNAME}'"'
+Restart=on-abort
+RestartSec=3
+EnvironmentFile='"'${HOME}/.google-drive-upload/google-drive-upload.info'"'
+ExecStart=/usr/bin/env bash "${INSTALL_PATH}/${SYNC_COMMAND_NAME}" --foreground --command "${INSTALL_PATH}/${COMMAND_NAME}" --sync-detail-dir "/tmp/sync" '"${ALL_ARGUMNETS}"'
+
+# Security
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+# Systemd service file - end'
+            num="${num+$((num += 1))}"
+            service_name="gsync-${SERVICE_NAME}${num:+_${num}}"
+            # shellcheck disable=SC2016
+            SCRIPT='#!/usr/bin/env bash
+set -e
+while [[ "${#}" -gt 0 ]]; do
+    case "${1}" in
+        start) { sudo printf "%s\n" '"'${CONTENTS}'"' >| /etc/systemd/system/'"${service_name}"'.service && sudo systemctl daemon-reload && sudo systemctl start '"'${service_name}'"' && printf "%s\n" '"'${service_name} started.'"' ;} || {
+                printf "%s\n" '"'Error: Cannot start ${service_name}'"' && exit 1 ;} ;;
+        stop) { sudo systemctl stop '"'${service_name}'"' && printf "%s\n" '"'${service_name} stopped.'"' ;} || { printf "%s\n" '"'Error: Cannot stop ${service_name}'"' && exit 1 ;} ;;
+        enable) { sudo systemctl enable '"'${service_name}'"' && printf "%s\n" '"'${service_name} boot service enabled.'"' ;} || { printf "%s\n" '"'Error: Cannot enable ${service_name}'"' && exit 1 ;} ;;
+        disable) { sudo systemctl disable '"'${service_name}'"' && printf "%s\n" '"'${service_name} boot service disabled.'"' ;} || { printf "%s\n" '"'Error: Cannot disabled ${service_name}'"' && exit 1 ;} ;;
+        logs) sudo journalctl -u '"'${service_name}'"' -f ;;
+        remove) { sudo systemctl stop '"'${service_name}'"' && sudo rm -f /etc/systemd/system/'"'${service_name}'"'.service && sudo systemctl daemon-reload && printf "%s\n" '"'${service_name} removed.'"' ;} || {
+                printf "%s\n" '"'Error: Cannot remove ${service_name}'"' && exit 1 ;} ;;
+    esac
+    shift
+done'
+            printf "%s\n" "${SCRIPT}" >| "${service_name}.service.sh"
+            _print_center "normal" "=" "="
+            printf "%s\n" "Service Name: ${service_name}"
+            printf "\n%s\n%s\n" "Folder: ${FOLDER}" "Gdrive Folder: ${GDRIVE_FOLDER}"
+            printf "\n%b\n" "# To start or stop the service\nbash ${service_name}.service.sh start / stop"
+            printf "\n%b\n" "# To enable or disable as a boot service:\nbash ${service_name}.service.sh enable / disable"
+            printf "\n%b\n" "# To see logs\nbash ${service_name}.service.sh logs"
+            printf "\n%b\n" "# To remove\nbash ${service_name}.service.sh remove"
+            _print_center "normal" "=" "="
+            continue
+        fi
         cd "${FOLDER}" || exit 1
         _check_existing_loop
         status="$?"
@@ -560,6 +650,7 @@ main() {
     fi
 
     _setup_arguments "${@}"
+    _check_debug
     _config_variables
     _process_arguments
 }
