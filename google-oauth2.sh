@@ -9,6 +9,8 @@
 # Set CLIENT_ID and CLIENT_SECRET and SCOPE
 # See SCOPES at https://developers.google.com/identity/protocols/oauth2/scopes#docsv1
 
+set -o errexit -o noclobber -o pipefail
+
 _short_help() {
     printf "
 No valid arguments provided.
@@ -35,10 +37,6 @@ else
     exit 1
 fi
 
-if ! _is_terminal; then
-    DEBUG="true"
-    export DEBUG
-fi
 _check_debug
 
 _print_center "justify" "Starting script.." "-"
@@ -49,8 +47,11 @@ SCOPE="https://www.googleapis.com/auth/drive"
 REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
 TOKEN_URL="https://accounts.google.com/o/oauth2/token"
 
+CONFIG="$(< "${HOME}/.google-drive-upload/google-drive-upload.configpath")" &> /dev/null || :
+CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
+
 # shellcheck source=/dev/null
-[[ -f ${HOME}/.googledrive.conf ]] && source "${HOME}"/.googledrive.conf
+[[ -f ${CONFIG} ]] && source "${CONFIG}"
 
 _print_center "justify" "Checking credentials.." "-"
 
@@ -77,7 +78,7 @@ if [[ ${1} = create ]]; then
 
     CODE="${CODE//[[:space:]]/}"
     if [[ -n ${CODE} ]]; then
-        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" ${TOKEN_URL})"
+        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" ${TOKEN_URL})" || :
 
         ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
         REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}")"
@@ -102,9 +103,9 @@ elif [[ ${1} = refresh ]]; then
     # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
     # Requirements: Refresh Token
     _get_token_and_update() {
-        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")"
+        RESPONSE="$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")" || :
         ACCESS_TOKEN="$(_json_value access_token 1 1 <<< "${RESPONSE}")"
-        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)"
+        ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)" || :
         "${UPDATE:-:}" ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
         "${UPDATE:-:}" ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
     }
@@ -115,5 +116,6 @@ elif [[ ${1} = refresh ]]; then
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
     else
         _print_center "normal" "Refresh Token not set, use ${0} create to generate one." "="
+        exit 1
     fi
 fi
