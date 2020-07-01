@@ -27,12 +27,12 @@ Options:\n
   -s | --service 'service name' - To generate systemd service file to setup background jobs on boot.\n
   -D | --debug - Display script command trace, use before all the flags to see maximum script trace.\n
   -h | --help - Display usage instructions.\n" "${0##*/}" "${0##*/}" "${0##*/}" "${0##*/}"
-    exit
+    exit 0
 }
 
 _short_help() {
     printf "No valid arguments provided, use -h/--help flag to see usage.\n"
-    exit
+    exit 0
 }
 
 ###################################################
@@ -62,28 +62,28 @@ _get_job_info() {
     pid="${1}"
     input="${3:-$(grep "${pid}" "${SYNC_LIST}" || :)}"
     if [[ -n ${input} ]]; then
-        if _check_pid "${pid}"; then
+        if times="$(ps -p "${pid}" -o etimes --no-headers)"; then
             printf "\n%s\n" "PID: ${pid}"
             : "${input#*"|:_//_:|"}" && local_folder="${_/"|:_//_:|"*/}"
             printf "Local Folder: %s\n" "${local_folder}"
             printf "Drive Folder: %s\n" "${input/*"|:_//_:|"/}"
-            times="$(ps -p "${pid}" -o etimes --no-headers)"
             printf "Running Since: %s\n" "$(_display_time "${times}")"
             if [[ -n ${2} ]]; then
-                extra="$(ps -p "${pid}" -o %cpu,%mem --no-headers)"
+                extra="$(ps -p "${pid}" -o %cpu,%mem --no-headers || :)"
                 printf "CPU usage:%s\n" "${extra% *}"
                 printf "Memory usage: %s\n" "${extra##* }"
                 _setup_loop_variables "${local_folder}" "${input/*"|:_//_:|"/}"
                 printf "Success: %s\n" "$(_count < "${SUCCESS_LOG}")"
                 printf "Failed: %s\n" "$(_count < "${ERROR_LOG}")"
             fi
-            return 0
+            return_status=0
         else
-            return 1
+            return_status=1
         fi
     else
-        return 11
+        return_status=11
     fi
+    return 0
 }
 
 ###################################################
@@ -97,16 +97,17 @@ _get_job_info() {
 ###################################################
 _remove_job() {
     declare pid="${1}" input local_folder drive_folder
-    input="$(grep "${pid}" "${SYNC_LIST}")"
+    input="$(grep "${pid}" "${SYNC_LIST}" || :)"
     : "${input#*"|:_//_:|"}" && local_folder="${_/"|:_//_:|"*/}"
     drive_folder="${input/*"|:_//_:|"/}"
-    new_list="$(grep -v "${pid}" "${SYNC_LIST}")"
+    new_list="$(grep -v "${pid}" "${SYNC_LIST}" || :)"
     printf "%s\n" "${new_list}" >| "${SYNC_LIST}"
     rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}${local_folder}"
     # Cleanup dir if empty
     if find "${SYNC_DETAIL_DIR:?}/${drive_folder}" -type f &> /dev/null; then
         rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}"
     fi
+    return 0
 }
 
 ###################################################
@@ -119,7 +120,7 @@ _remove_job() {
 ###################################################
 _kill_job() {
     declare pid="${1}"
-    kill -9 "${pid}" &> /dev/null
+    kill -9 "${pid}" &> /dev/null || :
     _remove_job "${pid}"
     printf "Killed.\n"
 }
@@ -141,11 +142,12 @@ _show_jobs() {
         if [[ -n ${line} ]]; then
             : "${line/"|:_//_:|"*/}" && pid="${_/*: /}"
             _get_job_info "${pid}" "${1}" "${line}"
-            { [[ ${?} = 1 ]] && _remove_job "${pid}"; } || { ((total += 1)) && no_task="printf"; }
+            { [[ ${return_status} = 1 ]] && _remove_job "${pid}"; } || { ((total += 1)) && no_task="printf"; }
         fi
     done 4< "${SYNC_LIST}"
     printf "\nTotal Jobs Running: %s\n" "${total}"
-    [[ v${1} = v ]] && "${no_task:-:}" "For more info: %s -j/--jobs v/verbose\n" "${0##*/}"
+    [[ -n ${1} ]] && "${no_task:-:}" "For more info: %s -j/--jobs v/verbose\n" "${0##*/}"
+    return 0
 }
 
 ###################################################
@@ -201,6 +203,7 @@ _check_and_upload() {
     else
         all+=(*)
     fi
+
     mapfile -t final <<< "$(_remove_array_duplicates "${all[@]}")"
 
     mapfile -t new_files <<< "$(diff \
@@ -252,15 +255,16 @@ _check_existing_loop() {
     _setup_loop_variables "${FOLDER}" "${GDRIVE_FOLDER}"
     _setup_loop_files
     if [[ -z ${PID} ]]; then
-        return 0
+        return_status=0
     elif _check_pid "${PID}"; then
-        return 1
+        return_status=1
     else
         _remove_job "${PID}"
         _setup_loop_variables "${FOLDER}" "${GDRIVE_FOLDER}"
         _setup_loop_files
-        return 2
+        return_status=2
     fi
+    return 0
 }
 
 ###################################################
@@ -284,8 +288,9 @@ _start_new_loop() {
         printf "%b\n" "Job started.\nLocal Folder: ${INPUT}\nDrive Folder: ${GDRIVE_FOLDER}"
         printf "%s\n" "PID: ${PID}"
         printf "%b\n" "PID: ${PID}|:_//_:|${FOLDER}|:_//_:|${GDRIVE_FOLDER}" >> "${SYNC_LIST}"
-        { [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"; } || :
+        [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"
     fi
+    return 0
 }
 
 ###################################################
@@ -321,9 +326,8 @@ _do_job() {
             for pid in "${ALL_PIDS[@]}"; do
                 if [[ ${JOB_TYPE} =~ INFO ]]; then
                     _get_job_info "${pid}" more
-                    status="${?}"
-                    if [[ ${status} != 0 ]]; then
-                        { [[ ${status} = 1 ]] && _remove_job "${pid}"; } || :
+                    if [[ ${return_status} != 0 ]]; then
+                        [[ ${return_status} = 1 ]] && _remove_job "${pid}"
                         printf "No job running with given PID ( %s ).\n" "${pid}" 1>&2
                     fi
                 fi
@@ -341,11 +345,10 @@ _do_job() {
                 fi
                 if [[ ${JOB_TYPE} =~ KILL ]]; then
                     _get_job_info "${pid}"
-                    status="${?}"
-                    if [[ ${status} = 0 ]]; then
+                    if [[ ${return_status} = 0 ]]; then
                         _kill_job "${pid}"
                     else
-                        { [[ ${status} = 1 ]] && _remove_job "${pid}"; } || :
+                        [[ ${return_status} = 1 ]] && _remove_job "${pid}"
                         printf "No job running with given PID ( %s ).\n" "${pid}" 1>&2
                     fi
                 fi
@@ -355,6 +358,7 @@ _do_job() {
             fi
             ;;
     esac
+    return 0
 }
 
 ###################################################
@@ -370,12 +374,13 @@ _do_job() {
 ###################################################
 _setup_arguments() {
     [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare -g SYNC_TIME_TO_SLEEP ARGS COMMAND_NAME DEBUG GDRIVE_FOLDER KILL SHOW_LOGS
+    unset SYNC_TIME_TO_SLEEP ARGS COMMAND_NAME DEBUG GDRIVE_FOLDER KILL SHOW_LOGS
 
     _check_longoptions() {
-        { [[ -z ${2} ]] &&
+        [[ -z ${2} ]] &&
             printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' \
-                "${0##*/}" "${1}" "${0##*/}" && exit 1; } || :
+                "${0##*/}" "${1}" "${0##*/}" && exit 1
+        return 0
     }
 
     while [[ $# -gt 0 ]]; do
@@ -393,7 +398,7 @@ _setup_arguments() {
                 ARGS+=" -C ${GDRIVE_FOLDER} "
                 ;;
             -j | --jobs)
-                { [[ ${2} = v* ]] && SHOW_JOBS_VERBOSE="true" && shift; } || :
+                [[ ${2} = v* ]] && SHOW_JOBS_VERBOSE="true" && shift
                 JOB=(SHOW_JOBS)
                 ;;
             -p | --pid)
@@ -424,7 +429,7 @@ _setup_arguments() {
             -t | --time)
                 _check_longoptions "${1}" "${2}"
                 if [[ ${2} =~ ^([0-9]+)+$ ]]; then
-                    { [[ ${2} = default* ]] && UPDATE_DEFAULT_TIME_TO_SLEEP="_update_config"; } || :
+                    [[ ${2} = default* ]] && UPDATE_DEFAULT_TIME_TO_SLEEP="_update_config"
                     TO_SLEEP="${2/default=/}" && shift
                 else
                     printf "-t/--time only takes positive integers as arguments, min = 1, max = infinity.\n"
@@ -433,7 +438,7 @@ _setup_arguments() {
                 ;;
             -a | --arguments)
                 _check_longoptions "${1}" "${2}"
-                { [[ ${2} = default* ]] && UPDATE_DEFAULT_ARGS="_update_config"; } || :
+                [[ ${2} = default* ]] && UPDATE_DEFAULT_ARGS="_update_config"
                 ARGS+="${2/default=/} " && shift
                 ;;
             -fg | --foreground)
@@ -489,6 +494,7 @@ _setup_arguments() {
     fi
 
     mapfile -t FINAL_INPUT_ARRAY <<< "$(_remove_array_duplicates "${FINAL_INPUT_ARRAY[@]}")"
+    return 0
 }
 
 ###################################################
@@ -502,7 +508,7 @@ _setup_arguments() {
 #   source CONFIG, update default values if required
 ###################################################
 _config_variables() {
-    if [[ -f "${INFO_PATH}/google-drive-upload.info" ]]; then
+    if [[ -r "${INFO_PATH}/google-drive-upload.info" ]]; then
         # shellcheck source=/dev/null
         source "${INFO_PATH}/google-drive-upload.info"
     else
@@ -532,6 +538,7 @@ _config_variables() {
     ARGS+=" ${SYNC_DEFAULT_ARGS:-} "
     "${UPDATE_DEFAULT_ARGS:-:}" SYNC_DEFAULT_ARGS " ${ARGS} " "${CONFIG}"
     "${UPDATE_DEFAULT_TIME_TO_SLEEP:-:}" SYNC_TIME_TO_SLEEP "${SYNC_TIME_TO_SLEEP}" "${CONFIG}"
+    return 0
 }
 
 ###################################################
@@ -613,8 +620,7 @@ done'
         fi
         cd "${FOLDER}" || exit 1
         _check_existing_loop
-        status="$?"
-        case "${status}" in
+        case "${return_status}" in
             0 | 2)
                 _start_new_loop
                 ;;
@@ -630,15 +636,18 @@ done'
                     _kill_job "${PID}"
                     exit
                 fi
-                { [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"; } || :
+                [[ -n ${SHOW_LOGS} ]] && tail -f "${LOGS}"
                 ;;
         esac
         cd "${CURRENT_FOLDER}" || exit 1
     done
+    return 0
 }
 
 main() {
     [[ $# = 0 ]] && _short_help
+
+    set -o errexit -o noclobber -o pipefail
 
     UTILS_FILE="${UTILS_FILE:-./utils.sh}"
     if [[ -r ${UTILS_FILE} ]]; then

@@ -238,14 +238,16 @@ _get_latest_sha() {
     declare LATEST_SHA
     case "${1:-${TYPE}}" in
         branch)
-            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000 | grep "Commit\\/" -m1)" && {
+            LATEST_SHA="$(
+                hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000 | grep "Commit\\/" -m1 || :)"
                 read -r firstline <<< "${hash}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
-            })"
+            )"
             ;;
         release)
-            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit" -m1)" && {
+            LATEST_SHA="$(
+                hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit" -m1 || :)"
                 read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}"
-            })"
+            )"
             ;;
     esac
     printf "%b" "${LATEST_SHA:+${LATEST_SHA}\n}"
@@ -308,7 +310,7 @@ _json_value() {
     declare LC_ALL=C num
     { [[ ${2} =~ ^([0-9]+)+$ ]] && no_of_lines="${2}"; } || :
     { [[ ${3} =~ ^([0-9]+)+$ ]] && num="${3}"; } || { [[ ${3} != all ]] && num=1; }
-    grep -o "\"${1}\"\:.*" ${no_of_lines+-m ${no_of_lines}} | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p
+    grep -o "\"${1}\"\:.*" ${no_of_lines:+-m ${no_of_lines}} | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p || :
 }
 
 ###################################################
@@ -764,6 +766,7 @@ _setup_arguments() {
 
 main() {
     _check_bash_version && _check_dependencies
+    set -o errexit -o noclobber -o pipefail
 
     _variables
     if [[ $* ]]; then
