@@ -26,6 +26,7 @@
 - Latest gdrive api used i.e v3
 - Pretty logging
 - Easy to install and update
+  - Auto update
 - An additional sync script for background synchronisation jobs. Read [Synchronisation](#synchronisation) section for more info.
 
 ## Table of Contents
@@ -197,6 +198,14 @@ These are the flags that are available in the install.sh script:
 
     ---
 
+-   <strong>-t | --time 'no of days'</strong>
+
+    Specify custom auto update time ( given input will taken as number of days ) after which script will try to automatically update itself.
+
+    Default: 5 ( 5 days )
+
+    ---
+
 -   <strong>-s | --shell-rc <shell_file></strong>
 
     Specify custom rc file, where PATH is appended, by default script detects .zshrc, .bashrc. and .profile.
@@ -249,6 +258,12 @@ There are two methods:
 1.  Run the installation script again.
 
     Yes, just run the installation script again as we did in install section, and voila, it's done.
+
+1.  Automatic updates
+
+    By default, script checks for update after 5 days. Use -t / --time flag of install.sh to modify the interval.
+
+    An update log is saved in "${HOME}/.gdrive-downloader/update.log".
 
 **Note: Above methods always obey the values set by user in advanced installation,**
 **e.g if you have installed the script with different repo, say `myrepo/gdrive-upload`, then the update will be also fetched from the same repo.**

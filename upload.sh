@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Upload a file to Google Drive
+# shellcheck source=/dev/null
 
 _usage() {
     printf "
@@ -37,6 +38,28 @@ _short_help() {
 }
 
 ###################################################
+# Automatic updater, only update if script is installed system wide.
+# Globals: 1 variable, 2 functions
+#    INFO_FILE | _update, _update_config
+# Arguments: None
+# Result: On
+#   Update if AUTO_UPDATE_INTERVAL + LAST_UPDATE_TIME less than printf "%(%s)T\\n" "-1"
+###################################################
+_auto_update() {
+    (
+        if [[ -w ${INFO_FILE} ]] && source "${INFO_FILE}" && command -v "${COMMAND_NAME}" &> /dev/null; then
+            if [[ $((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL)) -lt $(printf "%(%s)T\\n" "-1") ]]; then
+                _update 2>&1 1>| "${INFO_PATH}/update.log"
+                _update_config LAST_UPDATE_TIME "$(printf "%(%s)T\\n" "-1")" "${INFO_FILE}"
+            fi
+        else
+            return 0
+        fi
+    ) &> /dev/null &
+    return 0
+}
+
+###################################################
 # Install/Update/uninstall the script.
 # Globals: 3 variables
 #   Varibles - HOME, REPO, TYPE_VALUE
@@ -50,9 +73,8 @@ _update() {
     declare job="${1:-update}"
     [[ ${job} =~ uninstall ]] && job_string="--uninstall"
     _print_center "justify" "Fetching ${job} script.." "-"
-    # shellcheck source=/dev/null
-    if [[ -r "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
-        source "${HOME}/.google-drive-upload/google-drive-upload.info"
+    if [[ -w ${INFO_FILE} ]]; then
+        source "${INFO_FILE}"
     fi
     declare repo="${REPO:-labbots/google-drive-upload}" type_value="${TYPE_VALUE:-latest}"
     if [[ ${TYPE:-} = branch ]]; then
@@ -79,15 +101,15 @@ _update() {
 
 ###################################################
 # Print the contents of info file if scipt is installed system wide.
-# Path is "${HOME}/.google-drive-upload/google-drive-upload.info"
+# Path is INFO_FILE="${HOME}/.google-drive-upload/google-drive-upload.info"
 # Globals: 1 variable
 #   HOME
 # Arguments: None
 # Result: read description
 ###################################################
 _version_info() {
-    if [[ -r "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
-        printf "%s\n" "$(< "${HOME}/.google-drive-upload/google-drive-upload.info")"
+    if [[ -r ${INFO_FILE} ]]; then
+        printf "%s\n" "$(< "${INFO_FILE}")"
     else
         _print_center "justify" "google-drive-upload is not installed system wide." "="
     fi
@@ -144,13 +166,11 @@ _check_existing_file() {
 
     search_response="$(curl --compressed -s \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true")" || :
+        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true")" || :
 
     id="$(_json_value id 1 1 <<< "${search_response}")"
 
-    { [[ -z ${id} ]] && _json_value message 1 1 <<< "${search_response}" 1>&2 && return 1; } || {
-        printf "%s\n" "${id}"
-    }
+    [[ -n ${id} ]] && printf "%s\n" "${search_response}"
     return 0
 }
 
@@ -246,37 +266,18 @@ _upload_file() {
         UPLOAD_STATUS="ERROR" && export UPLOAD_STATUS # Send a error status, used in folder uploads.
     }
 
-    _collect_file_info() {
-        FILE_ID="${1:-$(printf "%s\n" "${upload_body}" | _json_value id 1 1)}"
-        FILE_LINK="${FILE_ID/*/https://drive.google.com/open?id=${FILE_ID}}"
-        # Log to the filename provided with -i/--save-id flag.
-        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
-            # shellcheck disable=SC2129
-            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-            {
-                printf "%s\n" "Link: ${FILE_LINK}"
-                : "$(printf "%s\n" "${upload_body}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
-                : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "${upload_body}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
-                printf '\n'
-            } >> "${LOG_FILE_ID}"
-        fi
-        return 0
-    }
-
     # Set proper variables for overwriting files
     if [[ ${job} = update ]]; then
-        declare existing_file_id
+        declare existing_file_check_json
         # Check if file actually exists, and create if not.
-        existing_file_id="$(_check_existing_file "${slug}" "${folder_id}" "${ACCESS_TOKEN}")" || {
-            printf "%s\n" "${existing_file_id}" 1>&2 && _error_logging && return 1
-        }
-        if [[ -n ${existing_file_id} ]]; then
+        existing_file_check_json="$(_check_existing_file "${slug}" "${folder_id}" "${ACCESS_TOKEN}")"
+        if [[ -n ${existing_file_check_json} ]]; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
-                SKIP_DUPLICATES_FILE_ID="${existing_file_id}"
+                SKIP_DUPLICATES_JSON="${existing_file_check_json}"
             else
                 request_method="PATCH"
-                url="${API_URL}/upload/drive/${API_VERSION}/files/${existing_file_id}?uploadType=resumable&supportsAllDrives=true"
+                _file_id="$(_json_value id 1 1 <<< "${existing_file_check_json}")"
+                url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]}"
                 string="Updated"
@@ -286,9 +287,9 @@ _upload_file() {
         fi
     fi
 
-    if [[ -n ${SKIP_DUPLICATES_FILE_ID} ]]; then
+    if [[ -n ${SKIP_DUPLICATES_JSON} ]]; then
         # Stop upload if already exists ( -d/--skip-duplicates )
-        _collect_file_info "${SKIP_DUPLICATES_FILE_ID}"
+        _collect_file_info "${SKIP_DUPLICATES_JSON}"
         "${QUIET:-_print_center}" "justify" "${slug}" " already exists." "="
     else
         # Set proper variables for creating files
@@ -456,28 +457,25 @@ _clone_file() {
     declare clone_file_post_data clone_file_response string readable_size
     [[ -z ${parallel} ]] && CURL_ARGS="-s"
     if [[ ${job} = update ]]; then
-        declare existing_file_id
+        declare existing_file_check_json
         # Check if file actually exists.
-        existing_file_id=$(_check_existing_file "${name}" "${file_root_id}" "${token}") || {
-            printf "%s\n" "${existing_file_id}" 1>&2 && return 1
-        }
-        if [[ -n ${existing_file_id} ]]; then
+        existing_file_check_json="$(_check_existing_file "${name}" "${file_root_id}" "${token}")"
+        if [[ -n ${existing_file_check_json} ]]; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
-                FILE_ID="${existing_file_id}"
-                FILE_LINK="${FILE_ID/${FILE_ID}/https://drive.google.com/open?id=${FILE_ID}}"
-                "${QUIET:-_print_center}" "justify" "${name}" " already exists." "=" && return
+                _collect_file_info "${existing_file_check_json}"
+                "${QUIET:-_print_center}" "justify" "${name}" " already exists." "=" && return 0
             else
                 _print_center "justify" "Overwriting file.." "-"
-                clone_file_post_data="$(_drive_info "${existing_file_id}" "parents,writersCanShare" "${token}")"
-                if [[ ${existing_file_id} != "${file_id}" ]]; then
+                _file_id="$(_json_value id 1 1 <<< "${existing_file_check_json}")"
+                clone_file_post_data="$(_drive_info "${_file_id}" "parents,writersCanShare" "${token}")"
+                if [[ ${_file_id} != "${file_id}" ]]; then
                     curl -s --compressed \
                         -X DELETE \
                         -H "Authorization: Bearer ${token}" \
-                        "${API_URL}/drive/${API_VERSION}/files/${existing_file_id}?supportsAllDrives=true" &> /dev/null || :
+                        "${API_URL}/drive/${API_VERSION}/files/${_file_id}?supportsAllDrives=true" &> /dev/null || :
                     string="Updated"
                 else
-                    FILE_ID="${existing_file_id}"
-                    FILE_LINK="${FILE_ID/${FILE_ID}/https://drive.google.com/open?id=${FILE_ID}}"
+                    _collect_file_info "${existing_file_check_json}"
                 fi
             fi
         else
@@ -502,20 +500,7 @@ _clone_file() {
         ${CURL_ARGS})" || :
     [[ -z ${parallel} ]] && for _ in {1..2}; do _clear_line 1; done
     if [[ -n ${clone_file_response} ]]; then
-        FILE_LINK="$(: "$(printf "%s\n" "${clone_file_response}" | _json_value id 1 1)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
-        FILE_ID="$(printf "%s\n" "${clone_file_response}" | _json_value id 1 1)"
-        # Log to the filename provided with -i/--save-id flag.
-        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
-            # shellcheck disable=SC2129
-            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-            {
-                printf "%s\n" "Link: ${FILE_LINK}"
-                : "$(printf "%s\n" "${clone_file_response}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
-                : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "${clone_file_response}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
-                printf '\n'
-            } >> "${LOG_FILE_ID}"
-        fi
+        _collect_file_info "${clone_file_response}"
         "${QUIET:-_print_center}" "justify" "${name} " "| ${readable_size} | ${string}" "="
     else
         "${QUIET:-_print_center}" "justify" "ERROR" ", ${slug} not ${string}." "=" 1>&2 && [[ -z ${parallel} ]] && printf "\n\n\n" 1>&2
@@ -585,15 +570,16 @@ _setup_arguments() {
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
     CURL_ARGS="-#"
     INFO_PATH="${HOME}/.google-drive-upload"
+    INFO_FILE="${INFO_PATH}/google-drive-upload.info"
     CONFIG="$(< "${INFO_PATH}/google-drive-upload.configpath")" &> /dev/null || :
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
     # Grab the first and second argument ( if 1st argument isn't a drive url ) and shift, only if ${1} doesn't contain -.
     if [[ ${1} != -* ]]; then
         if [[ ${1} =~ (drive.google.com|docs.google.com) ]]; then
-            ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift
+            { ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         else
-            LOCAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift
+            { LOCAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         fi
     fi
 
@@ -776,7 +762,6 @@ _setup_arguments() {
 ###################################################
 _setup_tempfile() {
     { type -p mktemp &> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$((RANDOM * 2)).LOG"
-    trap 'rm -f "${TMPFILE}"* ; exit' INT TERM
     return 0
 }
 
@@ -792,7 +777,6 @@ _setup_tempfile() {
 # Result: read description
 ###################################################
 _check_credentials() {
-    # shellcheck source=/dev/null
     # Config file is created automatically after first run
     if [[ -r ${CONFIG} ]]; then
         source "${CONFIG}"
@@ -963,6 +947,28 @@ _setup_workspace() {
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
 _process_arguments() {
+    # Used in collecting file properties from output json after a file has been uploaded/cloned
+    # Also handles logging in log file if LOG_FILE_ID is set
+    _collect_file_info() {
+        upload_body="${upload_body:-${1}}"
+        FILE_ID="$(printf "%s\n" "${upload_body}" | _json_value id 1 1)"
+        FILE_LINK="${FILE_ID/*/https://drive.google.com/open?id=${FILE_ID}}"
+        # Log to the filename provided with -i/--save-id flag.
+        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
+            # shellcheck disable=SC2129
+            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
+            {
+                printf "%s\n" "Link: ${FILE_LINK}"
+                : "$(printf "%s\n" "${upload_body}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
+                : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
+                : "$(printf "%s\n" "${upload_body}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
+                printf '\n'
+            } >> "${LOG_FILE_ID}"
+        fi
+        return 0
+    }
+    export -f _collect_file_info
+
     for INPUT in "${LOCAL_INPUT_ARRAY[@]}"; do
         # Check if the argument is a file or a directory.
         if [[ -f ${INPUT} ]]; then
@@ -1012,7 +1018,7 @@ _process_arguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export ID CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD
+                        export ID CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE
                         export -f _upload_file _print_center _clear_line _json_value _url_encode _check_existing_file _print_center_quiet _newline _bytes_to_human
 
                         [[ -f ${TMPFILE}SUCCESS ]] && rm "${TMPFILE}"SUCCESS
@@ -1020,6 +1026,7 @@ _process_arguments() {
 
                         # shellcheck disable=SC2016
                         printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "%s\n" "$$" >| "${TMPFILE}"pid"$$"
                         _upload_file "${UPLOAD_METHOD:-create}" "{}" "${ID}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
@@ -1106,7 +1113,7 @@ _process_arguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD
+                        export CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE
                         export -f _upload_file _print_center _clear_line _json_value _url_encode _check_existing_file _print_center_quiet _newline _bytes_to_human
 
                         [[ -f "${TMPFILE}"SUCCESS ]] && rm "${TMPFILE}"SUCCESS
@@ -1114,6 +1121,7 @@ _process_arguments() {
 
                         # shellcheck disable=SC2016
                         printf "\"%s\"\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "%s\n" "$$" >| "${TMPFILE}"pid"$$"
                         LIST="{}"
                         FILETOUPLOAD="${LIST//*"|:_//_:|"}"
                         DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
@@ -1161,11 +1169,11 @@ _process_arguments() {
                 [[ -z ${VERBOSE:-${VERBOSE_PROGRESS}} ]] && for _ in {1..2}; do _clear_line 1; done
 
                 if [[ ${SUCCESS_STATUS} -gt 0 ]]; then
-                    "${SHARE:-:}" "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
+                    FOLDER_ID="$(read -r firstline <<< "${DIRIDS}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")"
+                    "${SHARE:-:}" "${FOLDER_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
                     _print_center "justify" "FolderLink" "${SHARE:+ (SHARED)}" "-"
                     _is_terminal && _print_center "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                    _print_center "normal" "$(: "$(read -r firstline <<< "${DIRIDS}" &&
-                        printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
+                    _print_center "normal" "${FOLDER_ID/${FOLDER_ID}/https://drive.google.com/open?id=${FOLDER_ID}}" " "
                 fi
                 _newline "\n"
                 [[ ${SUCCESS_STATUS} -gt 0 ]] && "${QUIET:-_print_center}" "justify" "Total Files " "Uploaded: ${SUCCESS_STATUS}" "="
@@ -1216,14 +1224,11 @@ main() {
 
     UTILS_FILE="${UTILS_FILE:-./utils.sh}"
     if [[ -r ${UTILS_FILE} ]]; then
-        # shellcheck source=/dev/null
         source "${UTILS_FILE}" || { printf "Error: Unable to source utils file ( %s ) .\n" "${UTILS_FILE}" && exit 1; }
     else
         printf "Error: Utils file ( %s ) not found\n" "${UTILS_FILE}"
         exit 1
     fi
-
-    trap 'exit "$?"' INT TERM && trap 'exit "$?"' EXIT
 
     _check_bash_version && set -o errexit -o noclobber -o pipefail
 
@@ -1231,6 +1236,23 @@ main() {
     _check_debug && "${SKIP_INTERNET_CHECK:-_check_internet}"
 
     [[ -n ${PARALLEL_UPLOAD} ]] && _setup_tempfile
+
+    _cleanup() {
+        (
+            if [[ -n ${PARALLEL_UPLOAD} ]]; then
+                pid_files="$(printf "%b " "${TMPFILE}"pid* && printf "\n")"
+                pids="${pid_files//${TMPFILE}pid/}"
+                # shellcheck disable=SC2086
+                kill -9 ${pids} || :
+                rm -f "${TMPFILE:?}"*
+            fi
+            kill -9 $$ || :
+        ) &> /dev/null &
+        return 0
+    }
+
+    trap 'printf "\n" ; exit' SIGINT
+    trap '_auto_update ; _cleanup' SIGTERM EXIT
 
     START="$(printf "%(%s)T\\n" "-1")"
     _print_center "justify" "Starting script" "-"

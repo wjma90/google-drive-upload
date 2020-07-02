@@ -17,6 +17,8 @@ Options:\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
+  -t | --time 'no of days' - Specify custom auto update time ( given input will taken as number of days ) after which script will try to automatically update itself.\n
+      Default: 5 ( 5 days )\n
   --skip-internet-check - Like the flag says.\n
   -z | --config <fullpath> - Specify fullpath of the config file which will contain the credentials.\nDefault : %s/.googledrive.conf
   -U | --uninstall - Uninstall the script and remove related files.\n
@@ -55,30 +57,27 @@ _check_bash_version() {
 #             Check QUIET, then check terminal size and enable print functions accordingly.
 ###################################################
 _check_debug() {
-    _print_center_quiet() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
     if [[ -n ${DEBUG} ]]; then
         set -x
         _print_center() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         _clear_line() { :; } && _newline() { :; }
+        CURL_ARGS=" -s " && export CURL_ARGS
     else
         set +x
-        if [[ -z ${QUIET} ]]; then
-            if _is_terminal; then
-                # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the _print_center function.
-                shopt -s checkwinsize && (: && :)
-                if [[ ${COLUMNS} -lt 40 ]]; then
-                    _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
-                else
-                    trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
-                fi
-            else
+        if _is_terminal; then
+            # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the _print_center function.
+            shopt -s checkwinsize && (: && :)
+            if [[ ${COLUMNS} -lt 40 ]]; then
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
-                _clear_line() { :; }
+            else
+                trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
             fi
-            _newline() { printf "%b" "${1}"; }
         else
-            _print_center() { :; } && _clear_line() { :; } && _newline() { :; }
+            _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
+            _clear_line() { :; }
+            CURL_ARGS=" -s " && export CURL_ARGS
         fi
+        _newline() { printf "%b" "${1}"; }
     fi
 }
 
@@ -126,28 +125,21 @@ _check_dependencies() {
 ###################################################
 # Check internet connection.
 # Probably the fastest way, takes about 1 - 2 KB of data, don't check for more than 10 secs.
-# Use alternate timeout method if possible, as curl -m option is unreliable in some cases.
 # Globals: 2 functions
 #   _print_center, _clear_line
 # Arguments: None
 # Result: On
 #   Success - Nothing
 #   Error   - print message and exit 1
-# Reference:
-#   Alternative to timeout command: https://unix.stackexchange.com/a/18711
 ###################################################
 _check_internet() {
     _print_center "justify" "Checking Internet Connection.." "-"
-    if _is_terminal; then
-        CHECK_INTERNET="$(sh -ic 'exec 3>&1 2>/dev/null; { curl --compressed -Is google.com 1>&3; kill 0; } | { sleep 10; kill 0; }' || :)"
-    else
-        CHECK_INTERNET="$(curl --compressed -Is google.com -m 10)"
-    fi
-    _clear_line 1
-    if [[ -z ${CHECK_INTERNET} ]]; then
+    if ! _timeout 10 curl -Is google.com; then
+        _clear_line 1
         printf "Error: Internet connection not available.\n"
         exit 1
     fi
+    _clear_line 1
 }
 
 ###################################################
@@ -159,6 +151,22 @@ _check_internet() {
 ###################################################
 _clear_line() {
     printf "\033[%sA\033[2K" "${1}"
+}
+
+###################################################
+# Alternative to wc -l command
+# Globals: None
+# Arguments: 1  or pipe
+#   ${1} = file, _count < file
+#          variable, _count <<< variable
+#   pipe = echo something | _count
+# Result: Read description
+# Reference:
+#   https://github.com/dylanaraps/pure-bash-bible#get-the-number-of-lines-in-a-file
+###################################################
+_count() {
+    mapfile -tn 0 lines
+    printf '%s\n' "${#lines[@]}"
 }
 
 ###################################################
@@ -222,6 +230,36 @@ _full_path() {
     elif [[ -d ${input} ]]; then
         printf "%s\n" "$(cd "${input}" &> /dev/null && pwd)"
     fi
+}
+
+###################################################
+# Fetch latest commit sha of release or branch
+# Do not use github rest api because rate limit error occurs
+# Globals: None
+# Arguments: 2
+#   ${1} = repo name
+#   ${2} = branch or release
+#   ${3} = branch name or release name
+# Result: print fetched shas
+###################################################
+_get_files_and_commits() {
+    declare repo="${1:-${REPO}}" type_value="${2:-${TYPE_VALUE}}"
+    declare html commits files
+
+    # shellcheck disable=SC2086
+    html="$(curl ${CURL_ARGS:--#} --compressed https://github.com/"${repo}"/file-list/"${type_value}")"
+    _clear_line 1 1>&2
+    commits="$(: "$(grep -o "commit/.*\"" <<< "${html}")" && : "${_//commit\//}" && printf "%s\n" "${_//\"/}")"
+    # shellcheck disable=SC2001
+    files="$(: "$(grep -oE '(blob|tree)/'"${type_value}"'.*\"' <<< "${html}")" && : "${_//\"/}" && sed "s/>.*//g" <<< "${_}")"
+
+    if [[ $(_count <<< "${files}") -gt $(_count <<< "${commits}") ]]; then
+        files="$(sed 1d <<< "${files}")"
+    fi
+
+    while read -u 4 -r file && read -r -u 5 commit; do
+        printf "%s\n" "${file//blob\/${type_value}\//}__.__${commit}"
+    done 4<<< "${files}" 5<<< "${commits}" | grep -v tree || :
 }
 
 ###################################################
@@ -294,26 +332,6 @@ _is_terminal() {
 }
 
 ###################################################
-# Method to extract specified field data from json
-# Globals: None
-# Arguments: 2
-#   ${1} - value of field to fetch from json
-#   ${2} - Optional, no of lines to parse
-#   ${3} - Optional, nth number of value from extracted values, default it 1.
-# Input: file | here string | pipe
-#   _json_value "Arguments" < file
-#   _json_value "Arguments <<< "${varibale}"
-#   echo something | _json_value "Arguments"
-# Result: print extracted value
-###################################################
-_json_value() {
-    declare LC_ALL=C num
-    { [[ ${2} =~ ^([0-9]+)+$ ]] && no_of_lines="${2}"; } || :
-    { [[ ${3} =~ ^([0-9]+)+$ ]] && num="${3}"; } || { [[ ${3} != all ]] && num=1; }
-    grep -o "\"${1}\"\:.*" ${no_of_lines:+-m ${no_of_lines}} | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num}"p || :
-}
-
-###################################################
 # Print a text to center interactively and fill the rest of the line with text specified.
 # This function is fine-tuned to this script functionality, so may appear unusual.
 # Globals: 1 variable
@@ -377,23 +395,19 @@ _print_center() {
 }
 
 ###################################################
-# Remove duplicates, maintain the order as original.
+# Alternative to tail -n command
 # Globals: None
-# Arguments: 1
-#   ${@} = Anything
-# Result: read description
+# Arguments: 1  or pipe
+#   ${1} = file, _tail 1 < file
+#          variable, _tail 1 <<< variable
+#   pipe = echo something | _tail 1
+# Result: Read description
 # Reference:
-#   https://stackoverflow.com/a/37962595
+#   https://github.com/dylanaraps/pure-bash-bible/blob/master/README.md#get-the-last-n-lines-of-a-file
 ###################################################
-_remove_array_duplicates() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare -A Aseen
-    Aunique=()
-    for i in "$@"; do
-        { [[ -z ${i} || ${Aseen[${i}]} ]]; } && continue
-        Aunique+=("${i}") && Aseen[${i}]=x
-    done
-    printf '%s\n' "${Aunique[@]}"
+_tail() {
+    mapfile -tn 0 line
+    printf '%s\n' "${line[@]: -$1}"
 }
 
 ###################################################
@@ -436,13 +450,15 @@ _timeout() {
 ###################################################
 _update_config() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=()
+    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=() _FINAL && declare -A Aseen
     printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
     mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=\"${VALUE}\"")
     for i in "${VALUES[@]}"; do
-        [[ ${i} =~ ${VALUE_NAME}\= ]] && FINAL+=("${VALUE_NAME}=\"${VALUE}\"") || FINAL+=("${i}")
+        [[ ${Aseen[${i}]} ]] && continue
+        [[ ${i} =~ ${VALUE_NAME}\= ]] && _FINAL="${VALUE_NAME}=\"${VALUE}\"" || _FINAL="${i}"
+        FINAL+=("${_FINAL}") && Aseen[${_FINAL}]=x
     done
-    _remove_array_duplicates "${FINAL[@]}" >| "${CONFIG_PATH}"
+    printf '%s\n' "${FINAL[@]}" >| "${CONFIG_PATH}"
 }
 
 ###################################################
@@ -464,36 +480,49 @@ _variables() {
     TYPE="release"
     TYPE_VALUE="latest"
     SHELL_RC="$(_detect_profile)"
+    LAST_UPDATE_TIME="$(printf "%(%s)T\\n" "-1")" && export LAST_UPDATE_TIME
     # shellcheck source=/dev/null
     if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
     { [[ -n ${SKIP_SYNC} ]] && SYNC_COMMAND_NAME=""; } || :
-    __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
+    __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL)
 }
 
 ###################################################
-# Download files, script and utils
+# Download scripts
 ###################################################
 _download_files() {
-    _print_center "justify" "${UTILS_FILE}" "-"
-    if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/${UTILS_FILE}" -o "${INSTALL_PATH}/${UTILS_FILE}"; then
-        return 1
-    fi
-    for _ in {1..2}; do _clear_line 1; done
+    files_with_commits="$(_get_files_and_commits | grep 'upload.sh\|utils.sh\|sync.sh')"
+    repo="${REPO}"
 
-    _print_center "justify" "${COMMAND_NAME}" "-"
-    if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/upload.sh" -o "${INSTALL_PATH}/${COMMAND_NAME}"; then
-        return 1
-    fi
-    for _ in {1..2}; do _clear_line 1; done
+    cd "${INSTALL_PATH}" &> /dev/null || exit 1
 
-    { [[ -n ${SKIP_SYNC} ]] && return; } || :
-    _print_center "justify" "${SYNC_COMMAND_NAME}" "-"
-    if ! curl -# --compressed -L "https://raw.githubusercontent.com/${REPO}/${LATEST_CURRENT_SHA}/sync.sh" -o "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
-        return 1
-    fi
-    for _ in {1..2}; do _clear_line 1; done
+    while read -r -u 4 line; do
+        file="${line/__.__*/}" && sha="${line/*__.__/}"
+        local_file="${file/upload.sh/${COMMAND_NAME}}"
+        local_file="${local_file/sync.sh/${SYNC_COMMAND_NAME}}"
+
+        if [[ -n ${SKIP_SYNC} && ${local_file} = "${SYNC_COMMAND_NAME}" ]]; then
+            continue
+        fi
+
+        if [[ -f ${local_file} && $(_tail 1 < "${local_file}") = "#${sha}" ]]; then
+            continue
+        fi
+
+        _print_center "justify" "${local_file}" "-"
+
+        # shellcheck disable=SC2086
+        if ! curl ${CURL_ARGS:--#} --compressed "https://raw.githubusercontent.com/${repo}/${sha}/${file}" -o "${local_file}"; then
+            return 1
+        fi
+        for _ in {1..2}; do _clear_line 1; done
+
+        printf "\n#%s\n" "${sha}" >> "${local_file}"
+    done 4<<< "${files_with_commits}"
+
+    cd - &> /dev/null || exit 1
 }
 
 ###################################################
@@ -651,11 +680,12 @@ _uninstall() {
         printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
         if [[ -z ${SKIP_SYNC} ]] && type -a "${SYNC_COMMAND_NAME}" &> /dev/null; then
-            "${SYNC_COMMAND_NAME}" -k all &> /dev/null
+            "${SYNC_COMMAND_NAME}" -k all &> /dev/null || :
             rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
         fi
         rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
-        rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath}
+        rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath,update.log}
+        [[ -z $(find "${INFO_PATH}" -type f) ]] && rm -rf "${INFO_PATH}"
         _clear_line 1
         _print_center "justify" "Uninstall complete." "="
     else
@@ -722,6 +752,19 @@ _setup_arguments() {
                 _check_longoptions "${1}" "${2}"
                 SHELL_RC="${2}" && shift
                 ;;
+            -t | --time)
+                _check_longoptions "${1}" "${2}"
+                _AUTO_UPDATE_INTERVAL="${2}" && shift
+                case "${_AUTO_UPDATE_INTERVAL}" in
+                    *[!0-9]*)
+                        printf "\nError: -t/--time value can only be a positive integer.\n"
+                        exit 1
+                        ;;
+                    *)
+                        AUTO_UPDATE_INTERVAL="$((_AUTO_UPDATE_INTERVAL * 86400))"
+                        ;;
+                esac
+                ;;
             -z | --config)
                 _check_longoptions "${1}" "${2}"
                 if [[ -d "${2}" ]]; then
@@ -752,6 +795,9 @@ _setup_arguments() {
         esac
         shift
     done
+
+    # 86400 secs = 1 day
+    AUTO_UPDATE_INTERVAL="${AUTO_UPDATE_INTERVAL:-432000}"
 
     if [[ -z ${SHELL_RC} ]]; then
         printf "No default shell file found, use -s/--shell-rc to use custom rc file\n"

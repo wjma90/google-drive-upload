@@ -104,9 +104,7 @@ _remove_job() {
     printf "%s\n" "${new_list}" >| "${SYNC_LIST}"
     rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}${local_folder}"
     # Cleanup dir if empty
-    if find "${SYNC_DETAIL_DIR:?}/${drive_folder}" -type f &> /dev/null; then
-        rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}"
-    fi
+    [[ -z $(find "${SYNC_DETAIL_DIR:?}/${drive_folder}" -type f) ]] && rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder}"
     return 0
 }
 
