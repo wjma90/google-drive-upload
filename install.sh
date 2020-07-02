@@ -17,6 +17,8 @@ Options:\n
   -R | --release <tag/release_tag> - Specify tag name for the github repo, applies to custom and default repo both.\n
   -B | --branch <branch_name> - Specify branch name for the github repo, applies to custom and default repo both.\n
   -s | --shell-rc <shell_file> - Specify custom rc file, where PATH is appended, by default script detects .zshrc and .bashrc.\n
+  -t | --time 'no of days' - Specify custom auto update time ( given input will taken as number of days ) after which script will try to automatically update itself.\n
+      Default: 5 ( 5 days )\n
   --skip-internet-check - Like the flag says.\n
   -z | --config <fullpath> - Specify fullpath of the config file which will contain the credentials.\nDefault : %s/.googledrive.conf
   -U | --uninstall - Uninstall the script and remove related files.\n
@@ -464,12 +466,13 @@ _variables() {
     TYPE="release"
     TYPE_VALUE="latest"
     SHELL_RC="$(_detect_profile)"
+    LAST_UPDATE_TIME="$(printf "%(%s)T\\n" "-1")" && export LAST_UPDATE_TIME
     # shellcheck source=/dev/null
     if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
         source "${INFO_PATH}"/google-drive-upload.info
     fi
     { [[ -n ${SKIP_SYNC} ]] && SYNC_COMMAND_NAME=""; } || :
-    __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC)
+    __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL)
 }
 
 ###################################################
@@ -655,7 +658,7 @@ _uninstall() {
             rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
         fi
         rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
-        rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath}
+        rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath,update.log}
         [[ -z $(find "${INFO_PATH}" -type f) ]] && rm -rf "${INFO_PATH}"
         _clear_line 1
         _print_center "justify" "Uninstall complete." "="
@@ -723,6 +726,19 @@ _setup_arguments() {
                 _check_longoptions "${1}" "${2}"
                 SHELL_RC="${2}" && shift
                 ;;
+            -t | --time)
+                _check_longoptions "${1}" "${2}"
+                _AUTO_UPDATE_INTERVAL="${2}" && shift
+                case "${_AUTO_UPDATE_INTERVAL}" in
+                    *[!0-9]*)
+                        printf "\nError: -t/--time value can only be a positive integer.\n"
+                        exit 1
+                        ;;
+                    *)
+                        AUTO_UPDATE_INTERVAL="$((_AUTO_UPDATE_INTERVAL * 86400))"
+                        ;;
+                esac
+                ;;
             -z | --config)
                 _check_longoptions "${1}" "${2}"
                 if [[ -d "${2}" ]]; then
@@ -753,6 +769,9 @@ _setup_arguments() {
         esac
         shift
     done
+
+    # 86400 secs = 1 day
+    AUTO_UPDATE_INTERVAL="${AUTO_UPDATE_INTERVAL:-432000}"
 
     if [[ -z ${SHELL_RC} ]]; then
         printf "No default shell file found, use -s/--shell-rc to use custom rc file\n"

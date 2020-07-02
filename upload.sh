@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Upload a file to Google Drive
+# shellcheck source=/dev/null
 
 _usage() {
     printf "
@@ -37,6 +38,28 @@ _short_help() {
 }
 
 ###################################################
+# Automatic updater, only update if script is installed system wide.
+# Globals: 1 variable, 2 functions
+#    INFO_FILE | _update, _update_config
+# Arguments: None
+# Result: On
+#   Update if AUTO_UPDATE_INTERVAL + LAST_UPDATE_TIME less than printf "%(%s)T\\n" "-1"
+###################################################
+_auto_update() {
+    (
+        if [[ -w ${INFO_FILE} ]] && source "${INFO_FILE}" && command -v "${COMMAND_NAME}" &> /dev/null; then
+            if [[ $((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL)) -lt $(printf "%(%s)T\\n" "-1") ]]; then
+                _update 2>&1 1>| "${INFO_PATH}/update.log"
+                _update_config LAST_UPDATE_TIME "$(printf "%(%s)T\\n" "-1")" "${INFO_FILE}"
+            fi
+        else
+            return 0
+        fi
+    ) &> /dev/null &
+    return 0
+}
+
+###################################################
 # Install/Update/uninstall the script.
 # Globals: 3 variables
 #   Varibles - HOME, REPO, TYPE_VALUE
@@ -50,9 +73,8 @@ _update() {
     declare job="${1:-update}"
     [[ ${job} =~ uninstall ]] && job_string="--uninstall"
     _print_center "justify" "Fetching ${job} script.." "-"
-    # shellcheck source=/dev/null
-    if [[ -r "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
-        source "${HOME}/.google-drive-upload/google-drive-upload.info"
+    if [[ -w ${INFO_FILE} ]]; then
+        source "${INFO_FILE}"
     fi
     declare repo="${REPO:-labbots/google-drive-upload}" type_value="${TYPE_VALUE:-latest}"
     if [[ ${TYPE:-} = branch ]]; then
@@ -79,15 +101,15 @@ _update() {
 
 ###################################################
 # Print the contents of info file if scipt is installed system wide.
-# Path is "${HOME}/.google-drive-upload/google-drive-upload.info"
+# Path is INFO_FILE="${HOME}/.google-drive-upload/google-drive-upload.info"
 # Globals: 1 variable
 #   HOME
 # Arguments: None
 # Result: read description
 ###################################################
 _version_info() {
-    if [[ -r "${HOME}/.google-drive-upload/google-drive-upload.info" ]]; then
-        printf "%s\n" "$(< "${HOME}/.google-drive-upload/google-drive-upload.info")"
+    if [[ -r ${INFO_FILE} ]]; then
+        printf "%s\n" "$(< "${INFO_FILE}")"
     else
         _print_center "justify" "google-drive-upload is not installed system wide." "="
     fi
@@ -585,6 +607,7 @@ _setup_arguments() {
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
     CURL_ARGS="-#"
     INFO_PATH="${HOME}/.google-drive-upload"
+    INFO_FILE="${INFO_PATH}/google-drive-upload.info"
     CONFIG="$(< "${INFO_PATH}/google-drive-upload.configpath")" &> /dev/null || :
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
@@ -792,7 +815,6 @@ _setup_tempfile() {
 # Result: read description
 ###################################################
 _check_credentials() {
-    # shellcheck source=/dev/null
     # Config file is created automatically after first run
     if [[ -r ${CONFIG} ]]; then
         source "${CONFIG}"
@@ -1216,14 +1238,13 @@ main() {
 
     UTILS_FILE="${UTILS_FILE:-./utils.sh}"
     if [[ -r ${UTILS_FILE} ]]; then
-        # shellcheck source=/dev/null
         source "${UTILS_FILE}" || { printf "Error: Unable to source utils file ( %s ) .\n" "${UTILS_FILE}" && exit 1; }
     else
         printf "Error: Utils file ( %s ) not found\n" "${UTILS_FILE}"
         exit 1
     fi
 
-    trap 'exit "$?"' INT TERM && trap 'exit "$?"' EXIT
+    trap 'exit "$?"' INT TERM && trap '_auto_update ; exit "$?"' EXIT
 
     _check_bash_version && set -o errexit -o noclobber -o pipefail
 
