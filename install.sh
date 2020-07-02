@@ -651,11 +651,12 @@ _uninstall() {
         printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
         if [[ -z ${SKIP_SYNC} ]] && type -a "${SYNC_COMMAND_NAME}" &> /dev/null; then
-            "${SYNC_COMMAND_NAME}" -k all &> /dev/null
+            "${SYNC_COMMAND_NAME}" -k all &> /dev/null || :
             rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
         fi
         rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
         rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath}
+        [[ -z $(find "${INFO_PATH}" -type f) ]] && rm -rf "${INFO_PATH}"
         _clear_line 1
         _print_center "justify" "Uninstall complete." "="
     else
