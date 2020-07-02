@@ -614,9 +614,9 @@ _setup_arguments() {
     # Grab the first and second argument ( if 1st argument isn't a drive url ) and shift, only if ${1} doesn't contain -.
     if [[ ${1} != -* ]]; then
         if [[ ${1} =~ (drive.google.com|docs.google.com) ]]; then
-            ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift
+            { ID_INPUT_ARRAY+=("$(_extract_id "${1}")") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         else
-            LOCAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift
+            { LOCAL_INPUT_ARRAY+=("${1}") && shift && [[ ${1} != -* ]] && FOLDER_INPUT="${1}" && shift; } || :
         fi
     fi
 
@@ -799,7 +799,6 @@ _setup_arguments() {
 ###################################################
 _setup_tempfile() {
     { type -p mktemp &> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$((RANDOM * 2)).LOG"
-    trap 'rm -f "${TMPFILE}"* ; exit' INT TERM
     return 0
 }
 
@@ -1034,7 +1033,7 @@ _process_arguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export ID CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD
+                        export ID CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE
                         export -f _upload_file _print_center _clear_line _json_value _url_encode _check_existing_file _print_center_quiet _newline _bytes_to_human
 
                         [[ -f ${TMPFILE}SUCCESS ]] && rm "${TMPFILE}"SUCCESS
@@ -1042,6 +1041,7 @@ _process_arguments() {
 
                         # shellcheck disable=SC2016
                         printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "%s\n" "$$" >| "${TMPFILE}"pid"$$"
                         _upload_file "${UPLOAD_METHOD:-create}" "{}" "${ID}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
@@ -1128,7 +1128,7 @@ _process_arguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD
+                        export CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE
                         export -f _upload_file _print_center _clear_line _json_value _url_encode _check_existing_file _print_center_quiet _newline _bytes_to_human
 
                         [[ -f "${TMPFILE}"SUCCESS ]] && rm "${TMPFILE}"SUCCESS
@@ -1136,6 +1136,7 @@ _process_arguments() {
 
                         # shellcheck disable=SC2016
                         printf "\"%s\"\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
+                        printf "%s\n" "$$" >| "${TMPFILE}"pid"$$"
                         LIST="{}"
                         FILETOUPLOAD="${LIST//*"|:_//_:|"}"
                         DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
@@ -1244,14 +1245,29 @@ main() {
         exit 1
     fi
 
-    trap 'exit "$?"' INT TERM && trap '_auto_update ; exit "$?"' EXIT
-
     _check_bash_version && set -o errexit -o noclobber -o pipefail
 
     _setup_arguments "${@}"
     _check_debug && "${SKIP_INTERNET_CHECK:-_check_internet}"
 
     [[ -n ${PARALLEL_UPLOAD} ]] && _setup_tempfile
+
+    _cleanup() {
+        (
+            if [[ -n ${PARALLEL_UPLOAD} ]]; then
+                pid_files="$(printf "%b " "${TMPFILE}"pid* && printf "\n")"
+                pids="${pid_files//${TMPFILE}pid/}"
+                # shellcheck disable=SC2086
+                kill -9 ${pids} || :
+                rm -f "${TMPFILE:?}"*
+            fi
+            kill -9 $$ || :
+        ) &> /dev/null &
+        return 0
+    }
+
+    trap 'printf "\n" ; exit' SIGINT
+    trap '_auto_update ; _cleanup' SIGTERM EXIT
 
     START="$(printf "%(%s)T\\n" "-1")"
     _print_center "justify" "Starting script" "-"
