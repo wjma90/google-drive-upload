@@ -415,13 +415,15 @@ _timeout() {
 ###################################################
 _update_config() {
     [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=()
+    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=() _FINAL && declare -A Aseen
     printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
     mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=\"${VALUE}\"")
     for i in "${VALUES[@]}"; do
-        [[ ${i} =~ ${VALUE_NAME}\= ]] && FINAL+=("${VALUE_NAME}=\"${VALUE}\"") || FINAL+=("${i}")
+        [[ ${Aseen[${i}]} ]] && continue
+        [[ ${i} =~ ${VALUE_NAME}\= ]] && _FINAL="${VALUE_NAME}=\"${VALUE}\"" || _FINAL="${i}"
+        FINAL+=("${_FINAL}") && Aseen[${_FINAL}]=x
     done
-    _remove_array_duplicates "${FINAL[@]}" >| "${CONFIG_PATH}"
+    printf '%s\n' "${FINAL[@]}" >| "${CONFIG_PATH}"
 }
 
 ###################################################
