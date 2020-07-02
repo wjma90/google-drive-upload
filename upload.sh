@@ -166,13 +166,11 @@ _check_existing_file() {
 
     search_response="$(curl --compressed -s \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true")" || :
+        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true")" || :
 
     id="$(_json_value id 1 1 <<< "${search_response}")"
 
-    { [[ -z ${id} ]] && _json_value message 1 1 <<< "${search_response}" 1>&2 && return 1; } || {
-        printf "%s\n" "${id}"
-    }
+    [[ -n ${id} ]] && printf "%s\n" "${search_response}"
     return 0
 }
 
@@ -268,37 +266,18 @@ _upload_file() {
         UPLOAD_STATUS="ERROR" && export UPLOAD_STATUS # Send a error status, used in folder uploads.
     }
 
-    _collect_file_info() {
-        FILE_ID="${1:-$(printf "%s\n" "${upload_body}" | _json_value id 1 1)}"
-        FILE_LINK="${FILE_ID/*/https://drive.google.com/open?id=${FILE_ID}}"
-        # Log to the filename provided with -i/--save-id flag.
-        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
-            # shellcheck disable=SC2129
-            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-            {
-                printf "%s\n" "Link: ${FILE_LINK}"
-                : "$(printf "%s\n" "${upload_body}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
-                : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "${upload_body}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
-                printf '\n'
-            } >> "${LOG_FILE_ID}"
-        fi
-        return 0
-    }
-
     # Set proper variables for overwriting files
     if [[ ${job} = update ]]; then
-        declare existing_file_id
+        declare existing_file_check_json
         # Check if file actually exists, and create if not.
-        existing_file_id="$(_check_existing_file "${slug}" "${folder_id}" "${ACCESS_TOKEN}")" || {
-            printf "%s\n" "${existing_file_id}" 1>&2 && _error_logging && return 1
-        }
-        if [[ -n ${existing_file_id} ]]; then
+        existing_file_check_json="$(_check_existing_file "${slug}" "${folder_id}" "${ACCESS_TOKEN}")"
+        if [[ -n ${existing_file_check_json} ]]; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
-                SKIP_DUPLICATES_FILE_ID="${existing_file_id}"
+                SKIP_DUPLICATES_JSON="${existing_file_check_json}"
             else
                 request_method="PATCH"
-                url="${API_URL}/upload/drive/${API_VERSION}/files/${existing_file_id}?uploadType=resumable&supportsAllDrives=true"
+                _file_id="$(_json_value id 1 1 <<< "${existing_file_check_json}")"
+                url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]}"
                 string="Updated"
@@ -308,9 +287,9 @@ _upload_file() {
         fi
     fi
 
-    if [[ -n ${SKIP_DUPLICATES_FILE_ID} ]]; then
+    if [[ -n ${SKIP_DUPLICATES_JSON} ]]; then
         # Stop upload if already exists ( -d/--skip-duplicates )
-        _collect_file_info "${SKIP_DUPLICATES_FILE_ID}"
+        _collect_file_info "${SKIP_DUPLICATES_JSON}"
         "${QUIET:-_print_center}" "justify" "${slug}" " already exists." "="
     else
         # Set proper variables for creating files
@@ -478,28 +457,25 @@ _clone_file() {
     declare clone_file_post_data clone_file_response string readable_size
     [[ -z ${parallel} ]] && CURL_ARGS="-s"
     if [[ ${job} = update ]]; then
-        declare existing_file_id
+        declare existing_file_check_json
         # Check if file actually exists.
-        existing_file_id=$(_check_existing_file "${name}" "${file_root_id}" "${token}") || {
-            printf "%s\n" "${existing_file_id}" 1>&2 && return 1
-        }
-        if [[ -n ${existing_file_id} ]]; then
+        existing_file_check_json="$(_check_existing_file "${name}" "${file_root_id}" "${token}")"
+        if [[ -n ${existing_file_check_json} ]]; then
             if [[ -n ${SKIP_DUPLICATES} ]]; then
-                FILE_ID="${existing_file_id}"
-                FILE_LINK="${FILE_ID/${FILE_ID}/https://drive.google.com/open?id=${FILE_ID}}"
-                "${QUIET:-_print_center}" "justify" "${name}" " already exists." "=" && return
+                _collect_file_info "${existing_file_check_json}"
+                "${QUIET:-_print_center}" "justify" "${name}" " already exists." "=" && return 0
             else
                 _print_center "justify" "Overwriting file.." "-"
-                clone_file_post_data="$(_drive_info "${existing_file_id}" "parents,writersCanShare" "${token}")"
-                if [[ ${existing_file_id} != "${file_id}" ]]; then
+                _file_id="$(_json_value id 1 1 <<< "${existing_file_check_json}")"
+                clone_file_post_data="$(_drive_info "${_file_id}" "parents,writersCanShare" "${token}")"
+                if [[ ${_file_id} != "${file_id}" ]]; then
                     curl -s --compressed \
                         -X DELETE \
                         -H "Authorization: Bearer ${token}" \
-                        "${API_URL}/drive/${API_VERSION}/files/${existing_file_id}?supportsAllDrives=true" &> /dev/null || :
+                        "${API_URL}/drive/${API_VERSION}/files/${_file_id}?supportsAllDrives=true" &> /dev/null || :
                     string="Updated"
                 else
-                    FILE_ID="${existing_file_id}"
-                    FILE_LINK="${FILE_ID/${FILE_ID}/https://drive.google.com/open?id=${FILE_ID}}"
+                    _collect_file_info "${existing_file_check_json}"
                 fi
             fi
         else
@@ -524,20 +500,7 @@ _clone_file() {
         ${CURL_ARGS})" || :
     [[ -z ${parallel} ]] && for _ in {1..2}; do _clear_line 1; done
     if [[ -n ${clone_file_response} ]]; then
-        FILE_LINK="$(: "$(printf "%s\n" "${clone_file_response}" | _json_value id 1 1)" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")"
-        FILE_ID="$(printf "%s\n" "${clone_file_response}" | _json_value id 1 1)"
-        # Log to the filename provided with -i/--save-id flag.
-        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
-            # shellcheck disable=SC2129
-            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
-            {
-                printf "%s\n" "Link: ${FILE_LINK}"
-                : "$(printf "%s\n" "${clone_file_response}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
-                : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
-                : "$(printf "%s\n" "${clone_file_response}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
-                printf '\n'
-            } >> "${LOG_FILE_ID}"
-        fi
+        _collect_file_info "${clone_file_response}"
         "${QUIET:-_print_center}" "justify" "${name} " "| ${readable_size} | ${string}" "="
     else
         "${QUIET:-_print_center}" "justify" "ERROR" ", ${slug} not ${string}." "=" 1>&2 && [[ -z ${parallel} ]] && printf "\n\n\n" 1>&2
@@ -984,6 +947,28 @@ _setup_workspace() {
 # Result: Upload/Clone all the input files/folders, if a folder is empty, print Error message.
 ###################################################
 _process_arguments() {
+    # Used in collecting file properties from output json after a file has been uploaded/cloned
+    # Also handles logging in log file if LOG_FILE_ID is set
+    _collect_file_info() {
+        upload_body="${upload_body:-${1}}"
+        FILE_ID="$(printf "%s\n" "${upload_body}" | _json_value id 1 1)"
+        FILE_LINK="${FILE_ID/*/https://drive.google.com/open?id=${FILE_ID}}"
+        # Log to the filename provided with -i/--save-id flag.
+        if [[ -n ${LOG_FILE_ID} && ! -d ${LOG_FILE_ID} ]]; then
+            # shellcheck disable=SC2129
+            # https://github.com/koalaman/shellcheck/issues/1202#issuecomment-608239163
+            {
+                printf "%s\n" "Link: ${FILE_LINK}"
+                : "$(printf "%s\n" "${upload_body}" | _json_value name 1 1)" && printf "%s\n" "${_/*/Name: $_}"
+                : "$(printf "%s\n" "${FILE_ID}")" && printf "%s\n" "${_/*/ID: $_}"
+                : "$(printf "%s\n" "${upload_body}" | _json_value mimeType 1 1)" && printf "%s\n" "${_/*/Type: $_}"
+                printf '\n'
+            } >> "${LOG_FILE_ID}"
+        fi
+        return 0
+    }
+    export -f _collect_file_info
+
     for INPUT in "${LOCAL_INPUT_ARRAY[@]}"; do
         # Check if the argument is a file or a directory.
         if [[ -f ${INPUT} ]]; then
