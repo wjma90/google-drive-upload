@@ -1169,11 +1169,11 @@ _process_arguments() {
                 [[ -z ${VERBOSE:-${VERBOSE_PROGRESS}} ]] && for _ in {1..2}; do _clear_line 1; done
 
                 if [[ ${SUCCESS_STATUS} -gt 0 ]]; then
-                    "${SHARE:-:}" "${FILE_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
+                    FOLDER_ID="$(read -r firstline <<< "${DIRIDS}" && printf "%s\n" "${firstline/"|:_//_:|"*/}")"
+                    "${SHARE:-:}" "${FOLDER_ID}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
                     _print_center "justify" "FolderLink" "${SHARE:+ (SHARED)}" "-"
                     _is_terminal && _print_center "normal" "$(printf "\xe2\x86\x93 \xe2\x86\x93 \xe2\x86\x93\n")" " "
-                    _print_center "normal" "$(: "$(read -r firstline <<< "${DIRIDS}" &&
-                        printf "%s\n" "${firstline/"|:_//_:|"*/}")" && printf "%s\n" "${_/$_/https://drive.google.com/open?id=$_}")" " "
+                    _print_center "normal" "${FOLDER_ID/${FOLDER_ID}/https://drive.google.com/open?id=${FOLDER_ID}}" " "
                 fi
                 _newline "\n"
                 [[ ${SUCCESS_STATUS} -gt 0 ]] && "${QUIET:-_print_center}" "justify" "Total Files " "Uploaded: ${SUCCESS_STATUS}" "="
