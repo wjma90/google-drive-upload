@@ -248,7 +248,7 @@ _get_files_and_commits() {
     # shellcheck disable=SC2086
     html="$(curl ${CURL_ARGS:--#} --compressed https://github.com/"${repo}"/file-list/"${type_value}")"
     _clear_line 1 1>&2
-    commits="$(: "$(grep -o "commit/.*\"" <<< "${html}")" && : "${_//commit\//}" && printf "%s\n" "${_//\"/}")"
+    commits="$(: "$(grep -o "commit/.*\"" <<< "${html}")" && : "${_//commit\//}" && printf "%s\n" "${_//\"/}" | sed "s/>.*//g")"
     # shellcheck disable=SC2001
     files="$(: "$(grep -oE '(blob|tree)/'"${type_value}"'.*\"' <<< "${html}")" && : "${_//\"/}" && sed "s/>.*//g" <<< "${_}")"
 
