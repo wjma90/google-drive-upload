@@ -244,18 +244,21 @@ _full_path() {
 # Result: print fetched sha
 ###################################################
 _get_latest_sha() {
-    [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
     declare LATEST_SHA
     case "${1:-${TYPE}}" in
         branch)
-            LATEST_SHA="$(hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000 | grep "Commit\\/" -m1 || :)" && {
-                read -r firstline <<< "${hash}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
-            })"
+            LATEST_SHA="$(
+                : "$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000)"
+                : "$(grep "Commit\\/" -m1 <<< "${_}" || :)"
+                read -r firstline <<< "${_}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
+            )"
             ;;
         release)
-            LATEST_SHA="$(hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit" -m1 || :)" && {
-                read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}"
-            })"
+            LATEST_SHA="$(
+                : "$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}")"
+                : "$(grep "=\"/""${3:-${REPO}}""/commit" -m1 <<< "${_}" || :)"
+                : "${_/*commit\//}" && printf "%s\n" "${_/\"*/}"
+            )"
             ;;
     esac
     printf "%b" "${LATEST_SHA:+${LATEST_SHA}\n}"
