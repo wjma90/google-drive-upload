@@ -410,6 +410,12 @@ These are the custom flags that are currently implemented:
 
     ---
 
+-   <strong>--speed 'speed'</strong>
+
+    Limit the download speed, supported formats: 1K, 1M and 1G.
+
+    ---
+
 -   <strong>-q | --quiet</strong>
 
     Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.

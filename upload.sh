@@ -18,6 +18,7 @@ Options:\n
   -o | --overwrite - Overwrite the files with the same name, if present in the root folder/input folder, also works with recursive folders.\n
   -d | --skip-duplicates - Do not upload the files with the same name, if already present in the root folder/input folder, also works with recursive folders.\n
   -S | --share <optional_email_address>- Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.\n
+  --speed 'speed' - Limit the download speed, supported formats: 1K, 1M and 1G.\n
   -i | --save-info <file_to_save_info> - Save uploaded files info to the given filename.\n
   -z | --config <config_path> - Override default config file with custom config file.\nIf you want to change default value, then use this format -z/--config default=default=your_config_file_path.\n
   -q | --quiet - Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.\n
@@ -331,6 +332,7 @@ _upload_file() {
                 -o- \
                 --url "${uploadlink}" \
                 --globoff \
+                ${CURL_SPEED} \
                 ${CURL_ARGS})" || :
             return 0
         }
@@ -404,6 +406,7 @@ _upload_file() {
                         -T "${input}" \
                         -o- \
                         --url "${uploadlink}" \
+                        ${CURL_SPEED} \
                         --globoff)" || :
                     if [[ -n ${upload_body} ]]; then
                         _collect_file_info
@@ -567,7 +570,7 @@ _setup_arguments() {
     # De-initialize if any variables set already.
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
-    unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID
+    unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED
     CURL_ARGS="-#"
     INFO_PATH="${HOME}/.google-drive-upload"
     INFO_FILE="${INFO_PATH}/google-drive-upload.info"
@@ -680,6 +683,16 @@ _setup_arguments() {
                 if [[ -n ${1} && ! ${1} =~ ^(\-|\-\-) ]]; then
                     SHARE_EMAIL="${2}" && ! [[ ${SHARE_EMAIL} =~ ${EMAIL_REGEX} ]] && printf "\nError: Provided email address for share option is invalid.\n" && exit 1
                     shift
+                fi
+                ;;
+            --speed)
+                _check_longoptions "${1}" "${2}"
+                regex='^([0-9]+)([k,K]|[m,M]|[g,G])+$'
+                if [[ ${2} =~ ${regex} ]]; then
+                    CURL_SPEED="--limit-rate ${2}" && shift
+                else
+                    printf "Error: Wrong speed limit format, supported formats: 1K , 1M and 1G\n" 1>&2
+                    exit 1
                 fi
                 ;;
             -q | --quiet)
@@ -1018,7 +1031,7 @@ _process_arguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export ID CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE
+                        export ID CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE CURL_SPEED
                         export -f _upload_file _print_center _clear_line _json_value _url_encode _check_existing_file _print_center_quiet _newline _bytes_to_human
 
                         [[ -f ${TMPFILE}SUCCESS ]] && rm "${TMPFILE}"SUCCESS
@@ -1112,7 +1125,7 @@ _process_arguments() {
                     if [[ -n ${parallel} ]]; then
                         { [[ ${NO_OF_PARALLEL_JOBS} -gt ${NO_OF_FILES} ]] && NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_FILES}"; } || { NO_OF_PARALLEL_JOBS_FINAL="${NO_OF_PARALLEL_JOBS}"; }
                         # Export because xargs cannot access if it is just an internal variable.
-                        export CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE
+                        export CURL_ARGS="-s" ACCESS_TOKEN OVERWRITE COLUMNS API_URL API_VERSION LOG_FILE_ID SKIP_DUPLICATES QUIET UPLOAD_METHOD TMPFILE CURL_SPEED
                         export -f _upload_file _print_center _clear_line _json_value _url_encode _check_existing_file _print_center_quiet _newline _bytes_to_human
 
                         [[ -f "${TMPFILE}"SUCCESS ]] && rm "${TMPFILE}"SUCCESS
