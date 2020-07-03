@@ -1,11 +1,15 @@
 <h1 align="center">Google drive upload</h1>
 <p align="center">
-<a href="https://github.com/labbots/google-drive-upload/stargazers"><img src="https://img.shields.io/github/stars/labbots/google-drive-upload.svg?color=blueviolet&style=for-the-badge" alt="Stars"></a>
 <a href="https://github.com/labbots/google-drive-upload/releases"><img src="https://img.shields.io/github/release/labbots/google-drive-upload.svg?style=for-the-badge" alt="Latest Release"></a>
-<a href="https://www.codacy.com/manual/labbots/google-drive-upload?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=labbots/google-drive-upload&amp;utm_campaign=Badge_Grade"><img alt="Codacy grade" src="https://img.shields.io/codacy/grade/55b1591a28af473886c8dfdb3f2c9123?style=for-the-badge"></a>
+<a href="https://github.com/labbots/google-drive-upload/stargazers"><img src="https://img.shields.io/github/stars/labbots/google-drive-upload.svg?color=blueviolet&style=for-the-badge" alt="Stars"></a>
+<a href="https://github.com/labbots/google-drive-upload/blob/master/LICENSE"><img src="https://img.shields.io/github/license/labbots/google-drive-upload.svg?style=for-the-badge" alt="License"></a>
 </p>
 <p align="center">
-<a href="https://github.com/labbots/google-drive-upload/blob/master/LICENSE"><img src="https://img.shields.io/github/license/labbots/google-drive-upload.svg?style=for-the-badge" alt="License"></a>
+<a href="https://www.codacy.com/manual/labbots/google-drive-upload?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=labbots/google-drive-upload&amp;utm_campaign=Badge_Grade"><img alt="Codacy grade" src="https://img.shields.io/codacy/grade/55b1591a28af473886c8dfdb3f2c9123?style=for-the-badge"></a>
+<a href="https://github.com/labbots/google-drive-upload/actions"><img alt="Github Action Checks" src="https://img.shields.io/github/workflow/status/labbots/google-drive-upload/Checks?label=CI%20Checks&style=for-the-badge"></a>
+</p>
+</p>
+<p align="center">
 <a href="https://plant.treeware.earth/labbots/google-drive-upload"><img alt="Buy us a tree" src="https://img.shields.io/treeware/trees/labbots/google-drive-upload?color=green&label=Buy%20us%20a%20Tree%20%F0%9F%8C%B3&style=for-the-badge"></a>
 </p>
 
@@ -407,6 +411,12 @@ These are the custom flags that are currently implemented:
 -   <strong>-S | --share <optional_email_address></strong>
 
     Share the uploaded input file/folder, grant reader permission to provided email address or to everyone with the shareable link.
+
+    ---
+
+-   <strong>--speed 'speed'</strong>
+
+    Limit the download speed, supported formats: 1K, 1M and 1G.
 
     ---
 

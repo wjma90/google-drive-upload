@@ -238,12 +238,11 @@ _full_path() {
 # Globals: None
 # Arguments: 2
 #   ${1} = repo name
-#   ${2} = branch or release
-#   ${3} = branch name or release name
+#   ${2} = sha sum or branch name or tag name
 # Result: print fetched shas
 ###################################################
 _get_files_and_commits() {
-    declare repo="${1:-${REPO}}" type_value="${2:-${TYPE_VALUE}}"
+    declare repo="${1:-${REPO}}" type_value="${2:-${LATEST_CURRENT_SHA}}"
     declare html commits files
 
     # shellcheck disable=SC2086
@@ -277,14 +276,16 @@ _get_latest_sha() {
     case "${1:-${TYPE}}" in
         branch)
             LATEST_SHA="$(
-                hash="$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000 | grep "Commit\\/" -m1 || :)"
-                read -r firstline <<< "${hash}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
+                : "$(curl --compressed -s https://github.com/"${3:-${REPO}}"/commits/"${2:-${TYPE_VALUE}}".atom -r 0-2000)"
+                : "$(grep "Commit\\/" -m1 <<< "${_}" || :)"
+                read -r firstline <<< "${_}" && regex="(/.*<)" && [[ ${firstline} =~ ${regex} ]] && printf "%s\n" "${BASH_REMATCH[1]:1:-1}"
             )"
             ;;
         release)
             LATEST_SHA="$(
-                hash="$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}" | grep "=\"/""${3:-${REPO}}""/commit" -m1 || :)"
-                read -r firstline <<< "${hash}" && : "${hash/*commit\//}" && printf "%s\n" "${_/\"*/}"
+                : "$(curl -L --compressed -s https://github.com/"${3:-${REPO}}"/releases/"${2:-${TYPE_VALUE}}")"
+                : "$(grep "=\"/""${3:-${REPO}}""/commit" -m1 <<< "${_}" || :)"
+                : "${_/*commit\//}" && printf "%s\n" "${_/\"*/}"
             )"
             ;;
     esac
