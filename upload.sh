@@ -1026,7 +1026,6 @@ _process_arguments() {
 
                         # shellcheck disable=SC2016
                         printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
-                        printf "%s\n" "$$" >| "${TMPFILE}"pid"$$"
                         _upload_file "${UPLOAD_METHOD:-create}" "{}" "${ID}" "${ACCESS_TOKEN}" parallel
                         ' 1>| "${TMPFILE}"SUCCESS 2>| "${TMPFILE}"ERROR &
 
@@ -1121,7 +1120,6 @@ _process_arguments() {
 
                         # shellcheck disable=SC2016
                         printf "\"%s\"\n" "${FINAL_LIST[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS_FINAL}" -i bash -c '
-                        printf "%s\n" "$$" >| "${TMPFILE}"pid"$$"
                         LIST="{}"
                         FILETOUPLOAD="${LIST//*"|:_//_:|"}"
                         DIRTOUPLOAD="$(: "|:_//_:|""${FILETOUPLOAD}" && : "${LIST::-${#_}}" && printf "%s\n" "${_//*"|:_//_:|"}")"
@@ -1238,21 +1236,20 @@ main() {
     [[ -n ${PARALLEL_UPLOAD} ]] && _setup_tempfile
 
     _cleanup() {
-        (
-            if [[ -n ${PARALLEL_UPLOAD} ]]; then
-                pid_files="$(printf "%b " "${TMPFILE}"pid* && printf "\n")"
-                pids="${pid_files//${TMPFILE}pid/}"
-                # shellcheck disable=SC2086
-                kill -9 ${pids} || :
-                rm -f "${TMPFILE:?}"*
+        {
+            [[ -n ${PARALLEL_UPLOAD} ]] && rm -f "${TMPFILE:?}"*
+            export abnormal_exit
+            if [[ -n ${abnormal_exit} ]]; then
+                kill -- -$$
+            else
+                _auto_update
             fi
-            kill -9 $$ || :
-        ) &> /dev/null &
+        } &> /dev/null || :
         return 0
     }
 
-    trap 'printf "\n" ; exit' SIGINT
-    trap '_auto_update ; _cleanup' SIGTERM EXIT
+    trap 'printf "\n" ; abnormal_exit=1; exit' SIGINT SIGTERM
+    trap '_cleanup' EXIT
 
     START="$(printf "%(%s)T\\n" "-1")"
     _print_center "justify" "Starting script" "-"
