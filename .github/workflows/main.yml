@@ -20,5 +20,8 @@ jobs:
       - name: 'Install Google drive upload'
         run: |
           bash install.sh
-          bash install.sh -B master -c custom_gupload
-          sudo bash install.sh -p /usr/bin -c custom_gupload
+              eval "$(< "${HOME}/.google-drive-upload/google-drive-upload.binpath")"
+              gupload --help
+          sudo bash install.sh -B master -c custom_gupload -p /usr/bin
+              eval "$(< "${HOME}/.google-drive-upload/google-drive-upload.binpath")"
+              custom_gupload --help
