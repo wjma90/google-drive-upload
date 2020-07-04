@@ -62,13 +62,14 @@ _check_debug() {
         set -x
         _print_center() { { [[ $# = 3 ]] && printf "%s\n" "${2}"; } || { printf "%s%s\n" "${2}" "${3}"; }; }
         _clear_line() { :; } && _newline() { :; }
+        CURL_ARGS="-s" && export CURL_ARGS
     else
         set +x
         if [[ -z ${QUIET} ]]; then
             if _is_terminal; then
                 # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the _print_center function.
                 shopt -s checkwinsize && (: && :)
-                if [[ ${COLUMNS} -lt 40 ]]; then
+                if [[ ${COLUMNS} -lt 45 ]]; then
                     _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 else
                     trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
@@ -99,7 +100,7 @@ _check_internet() {
     _print_center "justify" "Checking Internet Connection.." "-"
     if ! _timeout 10 curl -Is google.com; then
         _clear_line 1
-        printf "Error: Internet connection not available.\n"
+        "${QUIET:-_print_center}" "justify" "Error: Internet connection" "not available."
         exit 1
     fi
     _clear_line 1
@@ -130,30 +131,6 @@ _clear_line() {
 _count() {
     mapfile -tn 0 lines
     printf '%s\n' "${#lines[@]}"
-}
-
-###################################################
-# Detect profile rc file for zsh and bash.
-# Detects for login shell of the user.
-# Globals: 2 Variables
-#   HOME, SHELL
-# Arguments: None
-# Result: On
-#   Success - print profile file
-#   Error   - print error message and exit 1
-###################################################
-_detect_profile() {
-    declare CURRENT_SHELL="${SHELL##*/}"
-    case "${CURRENT_SHELL}" in
-        'bash') DETECTED_PROFILE="${HOME}/.bashrc" ;;
-        'zsh') DETECTED_PROFILE="${HOME}/.zshrc" ;;
-        *) if [[ -f "${HOME}/.profile" ]]; then
-            DETECTED_PROFILE="${HOME}/.profile"
-        else
-            printf "No compaitable shell file\n" && exit 1
-        fi ;;
-    esac
-    printf "%s\n" "${DETECTED_PROFILE}"
 }
 
 ###################################################
@@ -330,9 +307,9 @@ _print_center() {
                 { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}..]"; } || { out="[ ${input1} ]"; }
             else
                 declare input1="${2}" input2="${3}" symbol="${4}" TO_PRINT temp out
-                TO_PRINT="$((TERM_COLS * 40 / 100))"
+                TO_PRINT="$((TERM_COLS * 47 / 100))"
                 { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.."; } || { temp+=" ${input1}"; }
-                TO_PRINT="$((TERM_COLS * 55 / 100))"
+                TO_PRINT="$((TERM_COLS * 46 / 100))"
                 { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. "; } || { temp+="${input2} "; }
                 out="[${temp}]"
             fi

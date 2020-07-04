@@ -67,7 +67,7 @@ _check_debug() {
         if _is_terminal; then
             # This refreshes the interactive shell so we can use the ${COLUMNS} variable in the _print_center function.
             shopt -s checkwinsize && (: && :)
-            if [[ ${COLUMNS} -lt 40 ]]; then
+            if [[ ${COLUMNS} -lt 45 ]]; then
                 _print_center() { { [[ $# = 3 ]] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
             else
                 trap 'shopt -s checkwinsize; (:;:)' SIGWINCH
@@ -252,13 +252,13 @@ _get_files_and_commits() {
     # shellcheck disable=SC2001
     files="$(: "$(grep -oE '(blob|tree)/'"${type_value}"'.*\"' <<< "${html}")" && : "${_//\"/}" && sed "s/>.*//g" <<< "${_}")"
 
-    if [[ $(_count <<< "${files}") -gt $(_count <<< "${commits}") ]]; then
-        files="$(sed 1d <<< "${files}")"
-    fi
+    [[ $(_count <<< "${files}") -gt $(_count <<< "${commits}") ]] && files="$(sed 1d <<< "${files}")"
 
     while read -u 4 -r file && read -r -u 5 commit; do
         printf "%s\n" "${file//blob\/${type_value}\//}__.__${commit}"
     done 4<<< "${files}" 5<<< "${commits}" | grep -v tree || :
+
+    return 0
 }
 
 ###################################################
@@ -367,9 +367,9 @@ _print_center() {
                 { [[ ${#input1} -gt ${TO_PRINT} ]] && out="[ ${input1:0:TO_PRINT}..]"; } || { out="[ ${input1} ]"; }
             else
                 declare input1="${2}" input2="${3}" symbol="${4}" TO_PRINT temp out
-                TO_PRINT="$((TERM_COLS * 40 / 100))"
+                TO_PRINT="$((TERM_COLS * 47 / 100))"
                 { [[ ${#input1} -gt ${TO_PRINT} ]] && temp+=" ${input1:0:TO_PRINT}.."; } || { temp+=" ${input1}"; }
-                TO_PRINT="$((TERM_COLS * 55 / 100))"
+                TO_PRINT="$((TERM_COLS * 46 / 100))"
                 { [[ ${#input2} -gt ${TO_PRINT} ]] && temp+="${input2:0:TO_PRINT}.. "; } || { temp+="${input2} "; }
                 out="[${temp}]"
             fi
@@ -482,10 +482,10 @@ _variables() {
     TYPE_VALUE="latest"
     SHELL_RC="$(_detect_profile)"
     LAST_UPDATE_TIME="$(printf "%(%s)T\\n" "-1")" && export LAST_UPDATE_TIME
+
     # shellcheck source=/dev/null
-    if [[ -r ${INFO_PATH}/google-drive-upload.info ]]; then
-        source "${INFO_PATH}"/google-drive-upload.info
-    fi
+    [[ -r ${INFO_PATH}/google-drive-upload.info ]] && source "${INFO_PATH}"/google-drive-upload.info
+
     { [[ -n ${SKIP_SYNC} ]] && SYNC_COMMAND_NAME=""; } || :
     __VALUES_ARRAY=(REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH CONFIG TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL)
 }
@@ -532,12 +532,18 @@ _download_files() {
 _inject_utils_path() {
     declare upload sync
 
-    upload="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${COMMAND_NAME}")"
-    printf "%s\n" "${upload}" >| "${INSTALL_PATH}/${COMMAND_NAME}"
+    if ! grep -q "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${COMMAND_NAME}"; then
+        upload="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${COMMAND_NAME}")"
+        printf "%s\n" "${upload}" >| "${INSTALL_PATH}/${COMMAND_NAME}"
+    fi
 
-    { [[ -n ${SKIP_SYNC} ]] && return; } || :
-    sync="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${SYNC_COMMAND_NAME}")"
-    printf "%s\n" "${sync}" >| "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+    { [[ -n ${SKIP_SYNC} ]] && return 0; } || :
+    if ! grep -q "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"; then
+        sync="$(_insert_line 2 "UTILS_FILE=\"${INSTALL_PATH}/${UTILS_FILE}\"" < "${INSTALL_PATH}/${SYNC_COMMAND_NAME}")"
+        printf "%s\n" "${sync}" >| "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+    fi
+
+    return 0
 }
 
 ###################################################
@@ -566,10 +572,11 @@ _start_interactive() {
             printf "%s\n" "${i}: ${!i}"
         fi
     done
+    return 0
 }
 
 ###################################################
-# Install the upload and sync script
+# Install/Update the upload and sync script
 # Globals: 10 variables, 6 functions
 #   Variables - INSTALL_PATH, INFO_PATH, UTILS_FILE, COMMAND_NAME, SYNC_COMMAND_NAME, SHELL_RC, CONFIG,
 #               TYPE, TYPE_VALUE, REPO, __VALUES_ARRAY ( array )
@@ -579,89 +586,57 @@ _start_interactive() {
 # Result: read description
 #   If cannot download, then print message and exit
 ###################################################
-_install() {
-    mkdir -p "${INSTALL_PATH}"
-    _print_center "justify" 'Installing google-drive-upload..' "-"
-    _print_center "justify" "Fetching latest sha.." "-"
+_start() {
+    declare job="${1:-install}"
+
+    [[ ${job} = install ]] && mkdir -p "${INSTALL_PATH}" && _print_center "justify" 'Installing google-drive-upload..' "-"
+
+    _print_center "justify" "Fetching latest version info.." "-"
     LATEST_CURRENT_SHA="$(_get_latest_sha "${TYPE}" "${TYPE_VALUE}" "${REPO}")"
+    [[ -z "${LATEST_CURRENT_SHA}" ]] && _print_center "justify" "Cannot fetch remote latest version." "=" && exit 1
     _clear_line 1
-    _print_center "justify" "Latest sha fetched." "=" && _print_center "justify" "Downloading scripts.." "-"
+
+    [[ ${job} = update ]] && {
+        [[ ${LATEST_CURRENT_SHA} = "${LATEST_INSTALLED_SHA}" ]] && _print_center "justify" "Latest google-drive-upload already installed." "=" && return 0
+        _print_center "justify" "Updating.." "-"
+    }
+
+    _print_center "justify" "Downloading scripts.." "-"
     if _download_files; then
         _inject_utils_path || { _print_center "justify" "Cannot edit installed files" ", check if sed program is working correctly" "=" && exit 1; }
         chmod +x "${INSTALL_PATH}"/*
+
+        # Add/Update config and inject shell rc
         for i in "${__VALUES_ARRAY[@]}"; do
             _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
         done
         _update_config LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
-        _update_config PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
+        _update_config PATH "${INSTALL_PATH}:${PATH//${INSTALL_PATH}:}" "${INFO_PATH}"/google-drive-upload.binpath
         printf "%s\n" "${CONFIG}" >| "${INFO_PATH}"/google-drive-upload.configpath
-        if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" &> /dev/null; then
+        if ! grep -q "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}"; then
             printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
         fi
-        for _ in {1..3}; do _clear_line 1; done
-        _print_center "justify" "Installed Successfully" "="
-        _print_center "normal" "[ Command name: ${COMMAND_NAME} ]" "="
-        if [[ -z ${SKIP_SYNC} ]]; then
-            _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+
+        for _ in {1..2}; do _clear_line 1; done
+
+        if [[ ${job} = install ]]; then
+            _print_center "justify" "Installed Successfully" "="
+            _print_center "normal" "[ Command name: ${COMMAND_NAME} ]" "="
+            [[ -z ${SKIP_SYNC} ]] && _print_center "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+            _print_center "justify" "To use the command, do" "-"
+            _newline "\n" && _print_center "normal" "source ${SHELL_RC}" " "
+            _print_center "normal" "or" " "
+            _print_center "normal" "restart your terminal." " "
+            _newline "\n" && _print_center "normal" "To update the script in future, just run ${COMMAND_NAME} -u/--update." " "
+        else
+            _print_center "justify" 'Successfully Updated.' "="
         fi
-        _print_center "justify" "To use the command, do" "-"
-        _newline "\n" && _print_center "normal" "source ${SHELL_RC}" " "
-        _print_center "normal" "or" " "
-        _print_center "normal" "restart your terminal." " "
-        _newline "\n" && _print_center "normal" "To update the script in future, just run ${COMMAND_NAME} -u/--update." " "
     else
         _clear_line 1
-        _print_center "justify" "Cannot download the script." "="
+        _print_center "justify" "Cannot download the scripts." "="
         exit 1
     fi
-}
-
-###################################################
-# Update the script
-# Globals: 10 variables, 6 functions
-#   Variables - INSTALL_PATH, INFO_PATH, UTILS_FILE, COMMAND_NAME, SHELL_RC, CONFIG,
-#               TYPE, TYPE_VALUE, REPO, __VALUES_ARRAY ( array )
-#   Functions - _print_center, _newline, _clear_line
-#               _get_latest_sha _update_config
-# Arguments: None
-# Result: read description
-#   If cannot download, then print message and exit
-###################################################
-_update() {
-    _print_center "justify" "Fetching latest version info.." "-"
-    LATEST_CURRENT_SHA="$(_get_latest_sha "${TYPE}" "${TYPE_VALUE}" "${REPO}")"
-    if [[ -z "${LATEST_CURRENT_SHA}" ]]; then
-        _print_center "justify" "Cannot fetch remote latest version." "="
-        exit 1
-    fi
-    _clear_line 1
-    if [[ ${LATEST_CURRENT_SHA} = "${LATEST_INSTALLED_SHA}" ]]; then
-        _print_center "justify" "Latest google-drive-upload already installed." "="
-    else
-        _print_center "justify" "Updating.." "-"
-        if _download_files; then
-            _inject_utils_path || { _print_center "justify" "Cannot edit installed files" ", check if sed program is working correctly" "=" && exit 1; }
-            chmod +x "${INSTALL_PATH}"/*
-            for i in "${__VALUES_ARRAY[@]}"; do
-                _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
-            done
-            _update_config LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
-            _update_config PATH "${INSTALL_PATH}:${PATH}" "${INFO_PATH}"/google-drive-upload.binpath
-            printf "%s\n" "${CONFIG}" >| "${INFO_PATH}"/google-drive-upload.configpath
-            if ! grep "source ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" &> /dev/null; then
-                printf "\nsource %s/google-drive-upload.binpath" "${INFO_PATH}" >> "${SHELL_RC}"
-            fi
-            _clear_line 1
-            for i in "${__VALUES_ARRAY[@]}"; do
-                _update_config "${i}" "${!i}" "${INFO_PATH}"/google-drive-upload.info
-            done
-            _print_center "justify" 'Successfully Updated.' "="
-        else
-            _clear_line 1
-            _print_center "justify" "Cannot download the script." "="
-            exit 1
-        fi
-    fi
+    return 0
 }
 
 ###################################################
@@ -680,10 +655,10 @@ _uninstall() {
     if _new_rc="$(sed "s|${__bak}||g" "${SHELL_RC}")" &&
         printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
-        if [[ -z ${SKIP_SYNC} ]] && type -a "${SYNC_COMMAND_NAME}" &> /dev/null; then
+        [[ -z ${SKIP_SYNC} ]] && type -a "${SYNC_COMMAND_NAME}" &> /dev/null && {
             "${SYNC_COMMAND_NAME}" -k all &> /dev/null || :
             rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
-        fi
+        }
         rm -f "${INSTALL_PATH}"/{"${COMMAND_NAME}","${UTILS_FILE}"}
         rm -f "${INFO_PATH}"/{google-drive-upload.info,google-drive-upload.binpath,google-drive-upload.configpath,update.log}
         [[ -z $(find "${INFO_PATH}" -type f) ]] && rm -rf "${INFO_PATH}"
@@ -692,6 +667,7 @@ _uninstall() {
     else
         _print_center "justify" 'Error: Uninstall failed.' "="
     fi
+    return 0
 }
 
 ###################################################
@@ -705,11 +681,11 @@ _uninstall() {
 #   If no shell rc file found, then print message and exit
 ###################################################
 _setup_arguments() {
-    [[ $# = 0 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-
     _check_longoptions() {
-        { [[ -z ${2} ]] &&
-            printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" && exit 1; } || :
+        [[ -z ${2} ]] &&
+            printf '%s: %s: option requires an argument\nTry '"%s -h/--help"' for more information.\n' "${0##*/}" "${1}" "${0##*/}" &&
+            exit 1
+        return 0
     }
 
     while [[ $# -gt 0 ]]; do
@@ -719,11 +695,9 @@ _setup_arguments() {
                 ;;
             -i | --interactive)
                 if _is_terminal; then
-                    INTERACTIVE="true"
-                    return 0
+                    INTERACTIVE="true" && return 0
                 else
-                    printf "Cannot start interactive mode in an non tty environment\n"
-                    exit 1
+                    printf "Cannot start interactive mode in an non tty environment\n" && exit 1
                 fi
                 ;;
             -p | --path)
@@ -809,22 +783,19 @@ _setup_arguments() {
             exit 1
         fi
     fi
+
+    _check_debug
+
+    return 0
 }
 
 main() {
     _check_bash_version && _check_dependencies
     set -o errexit -o noclobber -o pipefail
 
-    _variables
-    if [[ $* ]]; then
-        _setup_arguments "${@}"
-    fi
+    _variables && _setup_arguments "${@}"
 
-    _check_debug
-
-    if [[ -n ${INTERACTIVE} ]]; then
-        _start_interactive
-    fi
+    [[ -n ${INTERACTIVE} ]] && _start_interactive
 
     if [[ -n ${UNINSTALL} ]]; then
         if type -a "${COMMAND_NAME}" &> /dev/null; then
@@ -836,11 +807,14 @@ main() {
     else
         "${SKIP_INTERNET_CHECK:-_check_internet}"
         if type -a "${COMMAND_NAME}" &> /dev/null; then
-            _update
+            INSTALL_PATH="$(_dirname "$(command -v "${COMMAND_NAME}")")"
+            _start update
         else
-            _install
+            _start install
         fi
     fi
+
+    return 0
 }
 
 main "${@}"
