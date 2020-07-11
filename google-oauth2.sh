@@ -43,6 +43,8 @@ _print_center "justify" "Starting script.." "-"
 
 CLIENT_ID=""
 CLIENT_SECRET=""
+API_URL="https://www.googleapis.com"
+API_VERSION="v3"
 SCOPE="https://www.googleapis.com/auth/drive"
 REDIRECT_URI="urn:ietf:wg:oauth:2.0:oob"
 TOKEN_URL="https://accounts.google.com/o/oauth2/token"
