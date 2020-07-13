@@ -798,8 +798,7 @@ _check_credentials() {
         printf "%b" "If you have a refresh token generated, then type the token, else leave blank and press return key..\n\nRefresh Token: "
         read -r REFRESH_TOKEN && REFRESH_TOKEN="${REFRESH_TOKEN//[[:space:]]/}"
         if [[ -n ${REFRESH_TOKEN} ]]; then
-            _get_token_and_update &&
-                _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
+            _get_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
         else
             printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
             URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
@@ -810,7 +809,7 @@ _check_credentials() {
                     --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
 
                 REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}")"
-                _get_token_and_update "${RESPONSE}"
+                _get_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
             else
                 printf "\n"
                 _print_center "normal" "No code provided, run the script and try again" " " 1>&2
