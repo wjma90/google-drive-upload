@@ -357,36 +357,34 @@ _remove_array_duplicates() {
 
 ###################################################
 # Alternative to timeout command
-# Globals: None
+# Globals: 1 function
+#   _bash_sleep
 # Arguments: 1 and rest
 #   ${1} = amount of time to sleep
 #   rest = command to execute
 # Result: Read description
 # Reference:
-#   https://stackoverflow.com/a/11056286
+#   https://stackoverflow.com/a/24416732
 ###################################################
 _timeout() {
-    declare -i sleep="${1}" && shift
-    declare -i pid watcher
-    {
-        { "${@}"; } &
-        pid="${!}"
-        { read -r -t "${sleep:-10}" && kill -HUP "${pid}"; } &
-        watcher="${!}"
-        if wait "${pid}" 2> /dev/null; then
-            kill -9 "${watcher}"
-            return 0
-        else
-            return 1
-        fi
-    } &> /dev/null
+    declare timeout="${1:?Error: Specify Timeout}"
+    shift
+    (
+        eval "${@}" &
+        child="${!}"
+        trap -- "" SIGTERM
+        (
+            _bash_sleep "${timeout}"
+            kill "${child}" 2> /dev/null
+        ) &
+        wait "${child}"
+    ) &> /dev/null
 }
 
 ###################################################
 # Config updater
 # Incase of old value, update, for new value add.
-# Globals: 1 function
-#   _remove_array_duplicates
+# Globals: None
 # Arguments: 3
 #   ${1} = value name
 #   ${2} = value
@@ -394,16 +392,11 @@ _timeout() {
 # Result: read description
 ###################################################
 _update_config() {
-    [[ $# -lt 3 ]] && printf "%s: Missing arguments\n" "${FUNCNAME[0]}" && return 1
-    declare VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}" FINAL=() _FINAL && declare -A Aseen
+    [[ $# -lt 3 ]] && printf "Missing arguments\n" && return 1
+    VALUE_NAME="${1}" VALUE="${2}" CONFIG_PATH="${3}"
     printf "" >> "${CONFIG_PATH}" # If config file doesn't exist.
-    mapfile -t VALUES < "${CONFIG_PATH}" && VALUES+=("${VALUE_NAME}=\"${VALUE}\"")
-    for i in "${VALUES[@]}"; do
-        [[ ${Aseen[${i}]} ]] && continue
-        [[ ${i} =~ ${VALUE_NAME}\= ]] && _FINAL="${VALUE_NAME}=\"${VALUE}\"" || _FINAL="${i}"
-        FINAL+=("${_FINAL}") && Aseen[${_FINAL}]=x
-    done
-    printf '%s\n' "${FINAL[@]}" >| "${CONFIG_PATH}"
+    printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${VALUE_NAME}=" "${CONFIG_PATH}")" \
+        "${VALUE_NAME}=\"${VALUE}\"" >| "${CONFIG_PATH}"
 }
 
 ###################################################

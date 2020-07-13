@@ -420,6 +420,12 @@ These are the custom flags that are currently implemented:
 
     ---
 
+-   <strong>-R | --retry 'num of retries'</strong>
+
+    Retry the file upload if it fails, postive integer as argument. Currently only for file uploads.
+
+    ---
+
 -   <strong>-q | --quiet</strong>
 
     Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.
