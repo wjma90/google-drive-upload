@@ -342,8 +342,12 @@ _upload_file_main() {
 
     retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
     until [ "${retry_upload_file_main}" -le 0 ] && [ -n "${RETURN_STATUS}" ]; do
-        { eval _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" "${4:+2> /dev/null 1>&2}" && RETURN_STATUS=1 && break; } ||
-            { RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue; }
+        if [ -n "${4}" ]; then
+            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" 2> /dev/null 1>&2 && RETURN_STATUS=1 && break
+        else
+            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
+        fi
+        RETURN_STATUS=2 retry_upload_file_main="$((retry_upload_file_main - 1))" && continue
     done
     printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&"${RETURN_STATUS}"
     return 0
