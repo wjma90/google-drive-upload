@@ -79,7 +79,7 @@ done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
 until [[ -n ${CLIENT_SECRET} ]]; do
     [[ -n ${client_secret} ]] && _clear_line 1
     printf "Client Secret: " && read -r CLIENT_SECRET && client_secret=1
-done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+done && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
 
 for _ in 1 2; do _clear_line 1; done
 

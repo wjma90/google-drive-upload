@@ -77,10 +77,10 @@ until [ -n "${CLIENT_ID}" ]; do
     printf "Client ID: " && read -r CLIENT_ID && client_id=1
 done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
 
-until [ -z "${CLIENT_SECRET}" ]; do
+until [ -n "${CLIENT_SECRET}" ]; do
     [ -n "${client_secret}" ] && _clear_line 1
     printf "Client Secret: " && read -r CLIENT_SECRET && client_secret=1
-done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+done && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
 
 for _ in 1 2; do _clear_line 1; done
 
@@ -88,7 +88,7 @@ if [ "${1}" = create ]; then
     printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
     URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
     printf "%s\n" "${URL}"
-    until [ -z "${CODE}" ]; do
+    until [ -n "${CODE}" ]; do
         [ -n "${code}" ] && _clear_line 1
         printf "Enter the authorization code: " && read -r CODE && code=1
     done

@@ -368,7 +368,7 @@ _check_credentials() {
             printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
             URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
             printf "%s\n" "${URL}"
-            until [ -z "${CODE}" ]; do
+            until [ -n "${CODE}" ]; do
                 [ -n "${code}" ] && _clear_line 1
                 printf "Enter the authorization code: " && read -r CODE && code=1
             done
