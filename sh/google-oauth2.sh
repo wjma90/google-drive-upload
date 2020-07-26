@@ -39,7 +39,7 @@ _get_token_and_update() {
     else
         _print_center "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
         printf "%s\n" "${RESPONSE}" 1>&2
-        exit 1
+        return 1
     fi
     return 0
 }
@@ -69,44 +69,54 @@ CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 # shellcheck source=/dev/null
 [ -f "${CONFIG}" ] && . "${CONFIG}"
 
+! _is_terminal && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
+    printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
+    printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
+}
+
 _print_center "justify" "Checking credentials.." "-"
 
 # Credentials
 until [ -n "${CLIENT_ID}" ]; do
-    [ -n "${client_id}" ] && _clear_line 1
-    printf "Client ID: " && read -r CLIENT_ID && client_id=1
-done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+    [ -n "${client_id}" ] && for _ in 1 2 3; do _clear_line 1; done
+    printf "\n" && "${QUIET:-_print_center}" "normal" " Client ID " "-" && printf -- "-> "
+    read -r CLIENT_ID && client_id=1
+done && [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
 
 until [ -n "${CLIENT_SECRET}" ]; do
-    [ -n "${client_secret}" ] && _clear_line 1
-    printf "Client Secret: " && read -r CLIENT_SECRET && client_secret=1
-done && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+    [ -n "${client_secret}" ] && for _ in 1 2 3; do _clear_line 1; done
+    printf "\n" && "${QUIET:-_print_center}" "normal" " Client Secret " "-" && printf -- "-> "
+    read -r CLIENT_SECRET && client_secret=1
+done && [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
 
 for _ in 1 2; do _clear_line 1; done
 
 if [ "${1}" = create ]; then
-    printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
+    "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
     URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
-    printf "%s\n" "${URL}"
+    printf "\n%s\n" "${URL}"
     until [ -n "${CODE}" ]; do
-        [ -n "${code}" ] && _clear_line 1
-        printf "Enter the authorization code: " && read -r CODE && code=1
+        [ -n "${code}" ] && for _ in 1 2 3; do _clear_line 1; done
+        printf "\n" && "${QUIET:-_print_center}" "normal" "Enter the authorization code" "-" && printf -- "-> "
+        read -r CODE && code=1
     done
     RESPONSE="$(curl --compressed -s -X POST \
         --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
 
     REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1)"
-    _get_token_and_update "${RESPONSE}" && "${UPDATE:-:}" REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
-    printf "Access Token: %s\n" "${ACCESS_TOKEN}"
-    printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
+    if _get_token_and_update "${RESPONSE}"; then
+        "${UPDATE:-:}" REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
+        printf "Access Token: %s\n" "${ACCESS_TOKEN}"
+        printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
+    fi
 elif [ "${1}" = refresh ]; then
     if [ -n "${REFRESH_TOKEN}" ]; then
-        _print_center "justify" "Required credentials set." "="
+        "${QUIET:-_print_center}" "justify" "Required credentials set." "="
         _get_token_and_update
         _clear_line 1
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
     else
-        _print_center "normal" "Refresh Token not set" ", use ${0##*/} create to generate one." "="
+        "${QUIET:-_print_center}" "normal" "Refresh Token not set" ", use ${0##*/} create to generate one." "="
         exit 1
     fi
 fi

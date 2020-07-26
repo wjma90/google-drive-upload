@@ -40,7 +40,7 @@ _check_debug() {
                 if ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ]; then
                     _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 fi
-                EXTRA_LOG="_print_center" EXTRA_LOG_CLEAR="_clear_line"
+                EXTRA_LOG="_print_center"
             else
                 CURL_PROGRESS="-s" && export CURL_PROGRESS
                 _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
@@ -65,13 +65,13 @@ _check_debug() {
 #   Error   - print message and exit 1
 ###################################################
 _check_internet() {
-    "${EXTRA_LOG:-:}" "justify" "Checking Internet Connection.." "-"
+    "${EXTRA_LOG}" "justify" "Checking Internet Connection.." "-"
     if ! _timeout 10 curl -Is google.com --compressed; then
-        "${EXTRA_LOG_CLEAR:-:}" 1
+        _clear_line 1
         "${QUIET:-_print_center}" "justify" "Error: Internet connection" " not available." "="
         exit 1
     fi
-    "${EXTRA_LOG_CLEAR:-:}" 1
+    _clear_line 1
 }
 
 ###################################################

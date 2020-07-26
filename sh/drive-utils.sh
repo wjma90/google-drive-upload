@@ -53,11 +53,11 @@ _drive_info() {
     folder_id_drive_info="${1}" fetch_drive_info="${2}" token_drive_info="${3}"
     unset search_response_drive_info
 
-    "${EXTRA_LOG:-:}" "justify" "Fetching info.." "-" 1>&2
+    "${EXTRA_LOG}" "justify" "Fetching info.." "-" 1>&2
     search_response_drive_info="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token_drive_info}" \
         "${API_URL}/drive/${API_VERSION}/files/${folder_id_drive_info}?fields=${fetch_drive_info}&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
-    "${EXTRA_LOG_CLEAR:-:}" 1 1>&2
+    _clear_line 1 1>&2
 
     printf "%b" "${search_response_drive_info:+${search_response_drive_info}\n}"
     return 0
@@ -81,13 +81,13 @@ _check_existing_file() (
     name_check_existing_file="${1##*/}" rootdir_check_existing_file="${2}" token_check_existing_file="${3}"
     unset query_check_existing_file response_check_existing_file id_check_existing_file
 
-    "${EXTRA_LOG:-:}" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
+    "${EXTRA_LOG}" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
     query_check_existing_file="$(_url_encode "name='${name_check_existing_file}' and '${rootdir_check_existing_file}' in parents and trashed=false and 'me' in writers")"
 
     response_check_existing_file="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token_check_existing_file}" \
         "${API_URL}/drive/${API_VERSION}/files?q=${query_check_existing_file}&fields=files(id,name,mimeType)&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
-    "${EXTRA_LOG_CLEAR:-:}" 1 1>&2
+    _clear_line 1 1>&2
 
     { printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2> /dev/null 1>&2 && printf "%s\n" "${response_check_existing_file}"; } || return 1
     return 0
@@ -111,7 +111,7 @@ _create_directory() (
     dirname_create_directory="${1##*/}" rootdir_create_directory="${2}" token_create_directory="${3}"
     unset query_create_directory search_response_create_directory folder_id_create_directory
 
-    "${EXTRA_LOG:-:}" "justify" "Creating GDRIVE DIR:" " ${dirname_create_directory}" "-" 1>&2
+    "${EXTRA_LOG}" "justify" "Creating GDRIVE DIR:" " ${dirname_create_directory}" "-" 1>&2
     query_create_directory="$(_url_encode "mimeType='application/vnd.google-apps.folder' and name='${dirname_create_directory}' and trashed=false and '${rootdir_create_directory}' in parents")"
 
     search_response_create_directory="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
@@ -128,7 +128,7 @@ _create_directory() (
             -d "${create_folder_post_data_create_directory}" \
             "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
     fi
-    "${EXTRA_LOG_CLEAR:-:}" 1 1>&2
+    _clear_line 1 1>&2
 
     { folder_id_create_directory="${folder_id_create_directory:-$(printf "%s\n" "${create_folder_response_create_directory}" | _json_value id 1 1)}" && printf "%s\n" "${folder_id_create_directory}"; } ||
         { printf "%s\n" "${create_folder_response_create_directory}" 1>&2 && return 1; }
@@ -139,7 +139,7 @@ _create_directory() (
 # Sub functions for _upload_file function - Start
 # generate resumable upload link
 _generate_upload_link() {
-    "${EXTRA_LOG:-:}" "justify" "Generating upload link.." "-" 1>&2
+    "${EXTRA_LOG}" "justify" "Generating upload link.." "-" 1>&2
     uploadlink_upload_file="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -X "${request_method_upload_file}" \
         -H "Authorization: Bearer ${token_upload_file}" \
@@ -149,7 +149,7 @@ _generate_upload_link() {
         -d "$postdata_upload_file" \
         "${url_upload_file}" \
         -D - || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1 1>&2
-    "${EXTRA_LOG_CLEAR:-:}" 1 1>&2
+    _clear_line 1 1>&2
 
     uploadlink_upload_file="$(printf "%s\n" "${uploadlink_upload_file##*[L,l]ocation: }" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)"
     { [ -n "${uploadlink_upload_file}" ] && return 0; } || return 1
@@ -504,7 +504,7 @@ _share_id() {
     id_share_id="${1}" token_share_id="${2}" share_email_share_id="${3}" role_share_id="reader" type_share_id="${share_email_share_id:+user}"
     unset post_data_share_id response_share_id
 
-    "${EXTRA_LOG:-:}" "justify" "Sharing.." "-" 1>&2
+    "${EXTRA_LOG}" "justify" "Sharing.." "-" 1>&2
     post_data_share_id="{\"role\":\"${role_share_id}\",\"type\":\"${type_share_id:-anyone}\"${share_email_share_id:+,\\\"emailAddress\\\":\\\"${share_email_share_id}\\\"}}"
 
     response_share_id="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
@@ -513,7 +513,7 @@ _share_id() {
         -H "Content-Type: application/json; charset=UTF-8" \
         -d "${post_data_share_id}" \
         "${API_URL}/drive/${API_VERSION}/files/${id_share_id}/permissions" || :)" && "${CURL_PROGRESS_EXTRA_CLEAR:-:}" 1
-    "${EXTRA_LOG_CLEAR:-:}" 1 1>&2
+    _clear_line 1 1>&2
 
     { printf "%s\n" "${response_share_id}" | _json_value id 1 1 2> /dev/null 1>&2 && return 0; } ||
         { printf "%s\n" "Error: Cannot Share." 1>&2 && printf "%s\n" "${response_share_id}" 1>&2 && return 1; }

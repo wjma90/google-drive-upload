@@ -573,7 +573,8 @@ _process_arguments() {
         case "${Aseen}" in
             *"|:_//_:|${INPUT}|:_//_:|"*) continue ;;
             *) Aseen="${Aseen}|:_//_:|${INPUT}|:_//_:|" ;;
-        esac && [ -d "${INPUT}" ] || { printf "\nError: Invalid Input ( %s ), no such directory.\n" "${INPUT}" && continue; }; do
+        esac; do
+        ! [ -d "${INPUT}" ] && printf "\nError: Invalid Input ( %s ), no such directory.\n" "${INPUT}" && continue
         current_folder_process_arguments="$(pwd)"
         FOLDER="$(cd "${INPUT}" && pwd)" || exit 1
         GDRIVE_FOLDER="${GDRIVE_FOLDER:-${ROOT_FOLDER_NAME:-Unknown}}"

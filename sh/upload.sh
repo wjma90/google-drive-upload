@@ -87,7 +87,7 @@ _update() {
         printf "%s\n" "${script_update}" | sh -s -- ${job_string_update:-} --skip-internet-check
     else
         _clear_line 1
-        _print_center "justify" "Error: Cannot download" " ${job_update} script." "=" 1>&2
+        "${QUIET:-_print_center}" "justify" "Error: Cannot download" " ${job_update} script." "=" 1>&2
         exit 1
     fi
     exit "${?}"
@@ -105,7 +105,7 @@ _version_info() {
     if [ -r "${INFO_FILE}" ]; then
         cat "${INFO_FILE}"
     else
-        _print_center "justify" "google-drive-upload is not installed system wide." "="
+        printf "%s\n" "google-drive-upload is not installed system wide."
     fi
     exit 0
 }
@@ -130,7 +130,7 @@ _setup_arguments() {
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME FINAL_LOCAL_INPUT_ARRAY FINAL_ID_INPUT_ARRAY
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
     unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
-    CURL_PROGRESS="-#" && unset CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR EXTRA_LOG EXTRA_LOG_CLEAR
+    CURL_PROGRESS="-#" EXTRA_LOG=":" && unset CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR
     INFO_PATH="${HOME}/.google-drive-upload"
     INFO_FILE="${INFO_PATH}/google-drive-upload.info"
     [ -f "${INFO_PATH}/google-drive-upload.configpath" ] && CONFIG="$(cat "${INFO_PATH}/google-drive-upload.configpath")"
@@ -300,7 +300,7 @@ _setup_arguments() {
 
     # If no input, then check if -C option was used or not.
     # check if given input exists ( file/folder )
-    FINAL_LOCAL_INPUT_ARRAY="$(printf "%s\n" "${LOCAL_INPUT_ARRAY}" | while read -r input; do
+    FINAL_LOCAL_INPUT_ARRAY="$(printf "%s\n" "${LOCAL_INPUT_ARRAY}" | while read -r input && { [ -n "${input}" ] || continue; }; do
         { [ -r "${input}" ] && printf "%s\n" "${input}"; } || {
             { "${QUIET:-_print_center}" 'normal' "[ Error: Invalid Input - ${input} ]" "=" && printf "\n"; } 1>&2
             continue
@@ -315,8 +315,7 @@ _setup_arguments() {
 ###################################################
 # Setup Temporary file name for writing, uses mktemp, current dir as fallback
 # Used in parallel folder uploads progress
-# Globals: 2 variables
-#   PWD ( optional ), RANDOM ( optional )
+# Globals: None
 # Arguments: None
 # Result: read description
 ###################################################
@@ -341,15 +340,22 @@ _check_credentials() {
     [ -r "${CONFIG}" ] &&
         . "${CONFIG}" && [ -n "${UPDATE_DEFAULT_CONFIG}" ] && printf "%s\n" "${CONFIG}" >| "${INFO_PATH}/google-drive-upload.configpath"
 
+    ! _is_terminal && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
+        printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
+        printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
+    }
+
     until [ -n "${CLIENT_ID}" ]; do
-        [ -n "${client_id}" ] && _clear_line 1
-        printf "Client ID: " && read -r CLIENT_ID && client_id=1
-    done && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+        [ -n "${client_id}" ] && for _ in 1 2 3; do _clear_line 1; done
+        printf "\n" && "${QUIET:-_print_center}" "normal" " Client ID " "-" && printf -- "-> "
+        read -r CLIENT_ID && client_id=1
+    done && [ -n "${client_id}" ] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
 
     until [ -n "${CLIENT_SECRET}" ]; do
-        [ -n "${client_secret}" ] && _clear_line 1
-        printf "Client Secret: " && read -r CLIENT_SECRET && client_secret=1
-    done && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+        [ -n "${client_secret}" ] && for _ in 1 2 3; do _clear_line 1; done
+        printf "\n" && "${QUIET:-_print_center}" "normal" " Client Secret " "-" && printf -- "-> "
+        read -r CLIENT_SECRET && client_secret=1
+    done && [ -n "${client_secret}" ] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
 
     # Method to regenerate access_token ( also updates in config ).
     # Make a request on https://www.googleapis.com/oauth2/""${API_VERSION}""/tokeninfo?access_token=${ACCESS_TOKEN} url and check if the given token is valid, if not generate one.
@@ -360,11 +366,11 @@ _check_credentials() {
         if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
             _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
             { ACCESS_TOKEN_EXPIRY="$(curl --compressed -s "${API_URL}/oauth2/${API_VERSION}/tokeninfo?access_token=${ACCESS_TOKEN}" | _json_value exp 1 1)" &&
-                _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"; } || { "${QUIET:-_print_center}" "justify" "Error: Couldn't update" " access token expiry." 1>&2 && exit 1; }
+                _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"; } || { "${QUIET:-_print_center}" "normal" "Error: Couldn't update access token expiry." "-" 1>&2 && return 1; }
         else
-            _print_center "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
+            "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
             printf "%s\n" "${RESPONSE}" 1>&2
-            exit 1
+            return 1
         fi
         return 0
     }
@@ -372,27 +378,31 @@ _check_credentials() {
     # Method to obtain refresh_token.
     # Requirements: client_id, client_secret and authorization code.
     [ -z "${REFRESH_TOKEN}" ] && {
-        printf "%b" "If you have a refresh token generated, then type the token, else leave blank and press return key..\n\nRefresh Token: "
+        printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
+        printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
         read -r REFRESH_TOKEN
         if [ -n "${REFRESH_TOKEN}" ]; then
-            _get_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
+            { printf "\n\n" && _get_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
         else
-            printf "\nVisit the below URL, tap on allow and then enter the code obtained:\n"
+            for _ in 1 2; do _clear_line 1; done
+            "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
             URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
-            printf "%s\n" "${URL}"
+            printf "\n%s\n" "${URL}"
             until [ -n "${CODE}" ]; do
-                [ -n "${code}" ] && _clear_line 1
-                printf "Enter the authorization code: " && read -r CODE && code=1
+                [ -n "${code}" ] && for _ in 1 2 3; do _clear_line 1; done
+                printf "\n" && "${QUIET:-_print_center}" "normal" "Enter the authorization code" "-" && printf -- "-> "
+                read -r CODE && code=1
             done
-            RESPONSE="$(curl --compressed -s -X POST \
+            RESPONSE="$(curl --compressed "${CURL_PROGRESS_EXTRA}" -X POST \
                 --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
+            "${CURL_PROGRESS_EXTRA_CLEAR}" 1
 
             REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1 || :)"
-            _get_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
+            { _get_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
         fi
     }
 
-    [ -z "${ACCESS_TOKEN}" ] || [ "${ACCESS_TOKEN_EXPIRY}" -lt "$(date +'%s')" ] && _get_token_and_update
+    [ -z "${ACCESS_TOKEN}" ] || [ "${ACCESS_TOKEN_EXPIRY}" -lt "$(date +'%s')" ] && { _get_token_and_update || return 1; }
 
     return 0
 }
@@ -415,11 +425,11 @@ _setup_root_dir() {
         _setup_root_dir_json="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")"
         if ! rootid_setup_root_dir="$(printf "%s\n" "${_setup_root_dir_json}" | _json_value id 1 1)"; then
             if printf "%s\n" "${_setup_root_dir_json}" | grep "File not found" -q; then
-                "${QUIET:-_print}" "justify" "Given root folder" " ID/URL invalid." 1>&2
+                "${QUIET:-_print_center}" "justify" "Given root folder" " ID/URL invalid." "=" 1>&2
             else
                 printf "%s\n" "${_setup_root_dir_json}" 1>&2
             fi
-            exit 1
+            return 1
         fi
 
         ROOT_FOLDER="${rootid_setup_root_dir}"
@@ -435,14 +445,13 @@ _setup_root_dir() {
     [ -n "${ROOT_FOLDER}" ] && [ -z "${ROOT_FOLDER_NAME}" ] && _update_root_id_name _update_config
 
     if [ -n "${ROOTDIR:-}" ]; then
-        ROOT_FOLDER="${ROOTDIR}" && _check_root_id "${UPDATE_DEFAULT_ROOTDIR}"
+        ROOT_FOLDER="${ROOTDIR}" && { _check_root_id "${UPDATE_DEFAULT_ROOTDIR}" || return 1; }
     elif [ -z "${ROOT_FOLDER}" ]; then
-        printf "Root Folder ID or URL (Default: root) - Press enter for default: "
-        read -r ROOT_FOLDER
-        { [ -n "${ROOT_FOLDER}" ] && _check_root_id; } || {
+        { _is_terminal && "${QUIET:-_print_center}" "normal" "Enter root folder ID or URL, press enter for default ( root )" " " && printf -- "-> " &&
+            read -r ROOT_FOLDER && [ -n "${ROOT_FOLDER}" ] && { _check_root_id || return 1; }; } || {
             ROOT_FOLDER="root"
             _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
-        }
+        } && printf "\n\n"
     fi
 
     [ -z "${ROOT_FOLDER_NAME}" ] && _update_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
@@ -466,9 +475,9 @@ _setup_workspace() {
         WORKSPACE_FOLDER_NAME="${ROOT_FOLDER_NAME}"
     else
         WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")" ||
-            { printf "%s\n" "${WORKSPACE_FOLDER_ID}" 1>&2 && exit 1; }
+            { printf "%s\n" "${WORKSPACE_FOLDER_ID}" 1>&2 && return 1; }
         WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name 1 1)" ||
-            { printf "%s\n" "${WORKSPACE_FOLDER_NAME}" 1>&2 && exit 1; }
+            { printf "%s\n" "${WORKSPACE_FOLDER_NAME}" 1>&2 && return 1; }
     fi
     return 0
 }
@@ -490,7 +499,7 @@ _setup_workspace() {
 ###################################################
 _process_arguments() {
     export API_URL API_VERSION ACCESS_TOKEN LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY UTILS_FOLDER SOURCE_UTILS \
-        QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG EXTRA_LOG_CLEAR PARALLEL_UPLOAD
+        QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG PARALLEL_UPLOAD
 
     # on successful uploads
     _share_and_print_link() {
@@ -500,10 +509,10 @@ _process_arguments() {
         _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
     }
 
-    unset Aseen && while read -r input <&4 && { [ -n "${input}" ] || continue; } &&
+    unset Aseen && while read -r input <&4 &&
         case "${Aseen}" in
-            *"|:_//_:|${gdrive_id}|:_//_:|"*) continue ;;
-            *) Aseen="${Aseen}|:_//_:|${gdrive_id}|:_//_:|" ;;
+            *"|:_//_:|${input}|:_//_:|"*) continue ;;
+            *) Aseen="${Aseen}|:_//_:|${input}|:_//_:|" ;;
         esac; do
         # Check if the argument is a file or a directory.
         if [ -f "${input}" ]; then
@@ -526,46 +535,46 @@ _process_arguments() {
 
             NEXTROOTDIRID="${WORKSPACE_FOLDER_ID}"
 
-            _print_center "justify" "Processing folder.." "-"
+            "${EXTRA_LOG}" "justify" "Processing folder.." "-"
 
+            [ -z "${SKIP_SUBDIRS}" ] && "${EXTRA_LOG}" "justify" "Indexing subfolders.." "-"
             # Do not create empty folders during a recursive upload. Use of find in this section is important.
             DIRNAMES="$(find "${input}" -type d -not -empty)"
-            NO_OF_FOLDERS="$(($(printf "%s\n" "${DIRNAMES}" | wc -l)))" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))" && _clear_line 1
+            NO_OF_FOLDERS="$(($(printf "%s\n" "${DIRNAMES}" | wc -l)))" && NO_OF_SUB_FOLDERS="$((NO_OF_FOLDERS - 1))"
+            [ -z "${SKIP_SUBDIRS}" ] && _clear_line 1
             [ "${NO_OF_SUB_FOLDERS}" = 0 ] && SKIP_SUBDIRS="true"
+
+            "${EXTRA_LOG}" "justify" "Indexing files.." "-"
+            FILENAMES="$(_tmp='find "'${input}'" -type f -name "*" '${INCLUDE_FILES}' '${EXCLUDE_FILES}'' && eval "${_tmp}")"
+            _clear_line 1
 
             ERROR_STATUS=0 SUCCESS_STATUS=0
 
             # Skip the sub folders and find recursively all the files and upload them.
             if [ -n "${SKIP_SUBDIRS}" ]; then
-                _print_center "justify" "Indexing files recursively.." "-"
-                FILENAMES="$(_tmp='find "'${input}'" -type f -name "*" '${INCLUDE_FILES}' '${EXCLUDE_FILES}'' && eval "${_tmp}")"
-
                 if [ -n "${FILENAMES}" ]; then
                     NO_OF_FILES="$(($(printf "%s\n" "${FILENAMES}" | wc -l)))"
-                    for _ in 1 2; do _clear_line 1; done
+                    _clear_line 1
 
                     "${QUIET:-_print_center}" "justify" "Folder: ${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "=" && printf "\n"
-                    _print_center "justify" "Creating folder.." "-"
-                    { ID="$(_create_directory "${input}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" && export ID; } || { printf "%s\n" "${ID}" 1>&2 && return 1; }
+                    "${EXTRA_LOG}" "justify" "Creating folder.." "-"
+                    { ID="$(_create_directory "${input}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" && export ID; } ||
+                        { "${QUIET:-_print_center}" "normal" "Folder creation failed" "-" && printf "%s\n\n\n" "${ID}" 1>&2 && continue; }
                     _clear_line 1 && DIRIDS="${ID}"
 
                     [ -z "${PARALLEL_UPLOAD:-${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n"
                     _upload_folder "${PARALLEL_UPLOAD:-normal}" noparse "${FILENAMES}" "${ID}"
                     [ -n "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n\n"
                 else
-                    _newline "\n" && EMPTY=1
+                    for _ in 1 2; do _clear_line 1; done && EMPTY=1
                 fi
             else
-                _print_center "justify" "$((NO_OF_SUB_FOLDERS)) Sub-folders found." "="
-                _print_center "justify" "Indexing files.." "="
-                FILENAMES="$(_tmp='find "'${input}'" -type f -name "*" '${INCLUDE_FILES}' '${EXCLUDE_FILES}'' && eval "${_tmp}")"
-
                 if [ -n "${FILENAMES}" ]; then
                     NO_OF_FILES="$(($(printf "%s\n" "${FILENAMES}" | wc -l)))"
-                    for _ in 1 2 3; do _clear_line 1; done
+                    _clear_line 1
                     "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| $((NO_OF_FILES)) File(s) | $((NO_OF_SUB_FOLDERS)) Sub-folders" "="
 
-                    _newline "\n" && _print_center "justify" "Creating Folder(s).." "-" && _newline "\n"
+                    _newline "\n" && "${EXTRA_LOG}" "justify" "Creating Folder(s).." "-" && _newline "\n"
                     unset status
                     while read -r dir <&4 && { [ -n "${dir}" ] || continue; }; do
                         [ -n "${status}" ] && __dir="$(_dirname "${dir}")" &&
@@ -573,19 +582,20 @@ _process_arguments() {
                             NEXTROOTDIRID="${__temp%%"|:_//_:|${__dir}|:_//_:|"}"
 
                         NEWDIR="${dir##*/}" && _print_center "justify" "Name: ${NEWDIR}" "-" 1>&2
-                        ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" || { printf "%s\n" "${ID}" 1>&2 && exit 1; }
+                        ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" ||
+                            { "${QUIET:-_print_center}" "normal" "Folder creation failed" "-" && printf "%s\n\n\n" "${ID}" 1>&2 && continue; }
 
                         # Store sub-folder directory IDs and it's path for later use.
                         DIRIDS="$(printf "%b%s|:_//_:|%s|:_//_:|\n" "${DIRIDS:+${DIRIDS}\n}" "${ID}" "${dir}")"
 
                         for _ in 1 2; do _clear_line 1 1>&2; done
-                        _print_center "justify" "Status" ": $((status += 1)) / $((NO_OF_FOLDERS))" "=" 1>&2
+                        "${EXTRA_LOG}" "justify" "Status" ": $((status += 1)) / $((NO_OF_FOLDERS))" "=" 1>&2
                     done 4<< EOF
 $(printf "%s\n" "${DIRNAMES}")
 EOF
                     for _ in 1 2; do _clear_line 1; done
 
-                    _print_center "justify" "Preparing to upload.." "-"
+                    "${EXTRA_LOG}" "justify" "Preparing to upload.." "-"
 
                     export DIRIDS && cores="$(($(nproc 2> /dev/null || sysctl -n hw.logicalcpu 2> /dev/null)))"
                     # shellcheck disable=SC2016
@@ -595,7 +605,7 @@ EOF
                     _upload_folder "${PARALLEL_UPLOAD:-normal}" parse "${FINAL_LIST}"
                     [ -n "${PARALLEL_UPLOAD:+${VERBOSE:-${VERBOSE_PROGRESS}}}" ] && _newline "\n\n"
                 else
-                    EMPTY=1
+                    for _ in 1 2 3; do _clear_line 1; done && EMPTY=1
                 fi
             fi
             if [ "${EMPTY}" != 1 ]; then
@@ -610,8 +620,8 @@ EOF
                 [ "${ERROR_STATUS}" -gt 0 ] && "${QUIET:-_print_center}" "justify" "Total Files " "Failed: ${ERROR_STATUS}" "="
                 printf "\n"
             else
-                for _ in 1 2; do _clear_line 1; done
-                "${QUIET:-_print_center}" 'justify' "Empty Folder" ": ${input}" "=" 1>&2
+                for _ in 1 2 3; do _clear_line 1; done
+                "${QUIET:-_print_center}" 'justify' "Empty Folder" ": ${FOLDER_NAME}" "=" 1>&2
                 printf "\n"
             fi
         fi
@@ -625,7 +635,7 @@ EOF
             *) Aseen="${Aseen}|:_//_:|${gdrive_id}|:_//_:|" ;;
         esac; do
         _print_center "justify" "Given Input" ": ID" "="
-        _print_center "justify" "Checking if id exists.." "-"
+        "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
         json="$(_drive_info "${gdrive_id}" "name,mimeType,size" "${ACCESS_TOKEN}")" || :
         if ! printf "%s\n" "${json}" | _json_value code 1 1 2> /dev/null 1>&2; then
             type="$(printf "%s\n" "${json}" | _json_value mimeType 1 1 || :)"
@@ -634,7 +644,7 @@ EOF
             for _ in 1 2; do _clear_line 1; done
             case "${type}" in
                 *folder*)
-                    _print_center "justify" "Folder not supported." "=" 1>&2 && _newline "\n" 1>&2 && continue
+                    "${QUIET:-_print_center}" "justify" "Folder not supported." "=" 1>&2 && _newline "\n" 1>&2 && continue
                     ## TODO: Add support to clone folders
                     ;;
                 *)
@@ -687,18 +697,21 @@ main() {
     trap '_cleanup' EXIT
 
     START="$(date +'%s')"
-    "${EXTRA_LOG:-:}" "justify" "Starting script" "-"
+    "${EXTRA_LOG}" "justify" "Starting script" "-"
 
-    "${EXTRA_LOG:-:}" "justify" "Checking credentials.." "-"
-    _check_credentials && for _ in 1 2; do _clear_line 1; done
+    "${EXTRA_LOG}" "justify" "Checking credentials.." "-"
+    { _check_credentials && for _ in 1 2; do _clear_line 1; done; } ||
+        { "${QUIET:-_print_center}" "normal" "[ Error: Credentials checking failed ]" "=" && exit 1; }
     _print_center "justify" "Required credentials available." "="
 
-    "${EXTRA_LOG:-:}" "justify" "Checking root dir and workspace folder.." "-"
-    _setup_root_dir && for _ in 1 2; do _clear_line 1; done
+    "${EXTRA_LOG}" "justify" "Checking root dir and workspace folder.." "-"
+    { _setup_root_dir && for _ in 1 2; do _clear_line 1; done; } ||
+        { "${QUIET:-_print_center}" "normal" "[ Error: Rootdir setup failed ]" "=" && exit 1; }
     _print_center "justify" "Root dir properly configured." "="
 
-    "${EXTRA_LOG:-:}" "justify" "Checking Workspace Folder.." "-"
-    _setup_workspace && for _ in 1 2; do _clear_line 1; done
+    "${EXTRA_LOG}" "justify" "Checking Workspace Folder.." "-"
+    { _setup_workspace && for _ in 1 2; do _clear_line 1; done; } ||
+        { "${QUIET:-_print_center}" "normal" "[ Error: Workspace setup failed ]" "=" && exit 1; }
     _print_center "justify" "Workspace Folder: ${WORKSPACE_FOLDER_NAME}" "="
     _print_center "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
 
