@@ -463,6 +463,12 @@ These are the custom flags that are currently implemented:
 
     ---
 
+-   <strong>--hide</strong>
+
+    This flag will prevent the script to print sensitive information like root folder id or drivelink
+
+    ---
+
 -   <strong>-q | --quiet</strong>
 
     Supress the normal output, only show success/error upload messages for files, and one extra line at the beginning for folder showing no. of files and sub folders.

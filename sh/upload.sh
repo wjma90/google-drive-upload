@@ -28,6 +28,7 @@ Options:\n
       e.g: ${0##*/} local_folder --include "*1*", will only include with files with pattern '1' in the name.\n
   -ex | --exclude 'pattern' - Exclude the files with the given pattern from uploading. - Applicable for folder uploads.\n
       e.g: ${0##*/} local_folder --exclude "*1*", will exclude all the files pattern '1' in the name.\n
+  --hide - This flag will prevent the script to print sensitive information like root folder id and drivelink.\n
   -v | --verbose - Display detailed message (only for non-parallel uploads).\n
   -V | --verbose-progress - Display detailed message and detailed upload progress(only for non-parallel uploads).\n
   --skip-internet-check - Do not check for internet connection, recommended to use in sync jobs.\n
@@ -261,6 +262,7 @@ _setup_arguments() {
                 _check_longoptions "${1}" "${2}"
                 EXCLUDE_FILES="${EXCLUDE_FILES} ! -name '${2}' " && shift
                 ;;
+            --hide) HIDE_INFO=":" ;;
             -q | --quiet) QUIET="_print_center_quiet" ;;
             -v | --verbose) VERBOSE="true" ;;
             -V | --verbose-progress) VERBOSE_PROGRESS="true" && CURL_PROGRESS="" ;;
@@ -504,9 +506,11 @@ _process_arguments() {
     # on successful uploads
     _share_and_print_link() {
         "${SHARE:-:}" "${1:-}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
-        _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
-        _is_terminal && [ "$((COLUMNS))" -gt 45 ] 2> /dev/null && _print_center "normal" '^ ^ ^' ' '
-        _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
+        [ -z "${HIDE_INFO}" ] &&
+            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-" &&
+            _is_terminal && [ "$((COLUMNS))" -gt 45 ] 2> /dev/null && _print_center "normal" '^ ^ ^' ' ' &&
+            _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
+        return 0
     }
 
     unset Aseen && while read -r input <&4 &&
@@ -658,7 +662,7 @@ EOF
             printf "\n"
         else
             _clear_line 1
-            "${QUIET:-_print_center}" "justify" "File ID (${gdrive_id})" " invalid." "=" 1>&2
+            "${QUIET:-_print_center}" "justify" "File ID (${HIDE_INFO:-gdrive_id})" " invalid." "=" 1>&2
             printf "\n"
         fi
     done 4<< EOF
@@ -713,7 +717,7 @@ main() {
     { _setup_workspace && for _ in 1 2; do _clear_line 1; done; } ||
         { "${QUIET:-_print_center}" "normal" "[ Error: Workspace setup failed ]" "=" && exit 1; }
     _print_center "justify" "Workspace Folder: ${WORKSPACE_FOLDER_NAME}" "="
-    _print_center "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
+    "${HIDE_INFO:-_print_center}" "normal" " ${WORKSPACE_FOLDER_ID} " "-" && _newline "\n"
 
     _process_arguments
 
