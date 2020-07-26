@@ -169,8 +169,9 @@ _upload_file_from_uri() {
         -o- \
         --url "${uploadlink}" \
         --globoff \
-        ${CURL_SPEED} ${resume_args} || :)"
-    [[ -z ${VERBOSE_PROGRESS} ]] && for _ in 1 2; do _clear_line 1; done
+        ${CURL_SPEED} ${resume_args1} ${resume_args2} \
+        -H "${resume_args3}" || :)"
+    [[ -z ${VERBOSE_PROGRESS} ]] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
     return 0
 }
 # logging in case of successful upload
@@ -295,8 +296,8 @@ _upload_file() {
                     content_range="$(printf "bytes %s-%s/%s\n" "$((uploaded_range + 1))" "$((inputsize - 1))" "${inputsize}")"
                     content_length="$((inputsize - $((uploaded_range + 1))))"
                     # Resuming interrupted uploads needs http1.1
-                    resume_args='-s --http1.1 -H "Content-Range: '${content_range}'"'
-                    _upload_file_from_uri
+                    resume_args1='-s' resume_args2='--http1.1' resume_args3="Content-Range: ${content_range}"
+                    _upload_file_from_uri _clear_line
                     _collect_file_info "${upload_body}" "${slug}" || return 1
                     _normal_logging_upload
                     _remove_upload_session

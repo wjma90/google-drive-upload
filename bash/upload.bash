@@ -519,7 +519,7 @@ _process_arguments() {
 
             _print_center "justify" "Given Input" ": FOLDER" "-"
             _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
-            FOLDER_NAME="${input##*/}" && _print_center "justify" "Folder: ${FOLDER_NAME}" "="
+            FOLDER_NAME="${input##*/}" && "${EXTRA_LOG}" "justify" "Folder: ${FOLDER_NAME}" "="
 
             NEXTROOTDIRID="${WORKSPACE_FOLDER_ID}"
 
@@ -541,7 +541,7 @@ _process_arguments() {
             # Skip the sub folders and find recursively all the files and upload them.
             if [[ -n ${SKIP_SUBDIRS} ]]; then
                 if [[ -n ${FILENAMES[0]} ]]; then
-                    _clear_line 1
+                    for _ in 1 2; do _clear_line 1; done
                     NO_OF_FILES="${#FILENAMES[@]}"
 
                     "${QUIET:-_print_center}" "justify" "Folder: ${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "=" && printf "\n"
@@ -558,7 +558,7 @@ _process_arguments() {
                 fi
             else
                 if [[ -n ${FILENAMES[0]} ]]; then
-                    _clear_line 1
+                    for _ in 1 2; do _clear_line 1; done
                     NO_OF_FILES="${#FILENAMES[@]}"
                     "${QUIET:-_print_center}" "justify" "${FOLDER_NAME} " "| ${NO_OF_FILES} File(s) | ${NO_OF_SUB_FOLDERS} Sub-folders" "="
 

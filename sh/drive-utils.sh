@@ -169,8 +169,9 @@ _upload_file_from_uri() {
         -o- \
         --url "${uploadlink_upload_file}" \
         --globoff \
-        ${CURL_SPEED} ${resume_args_upload_file} || :)"
-    [ -z "${VERBOSE_PROGRESS}" ] && for _ in 1 2; do _clear_line 1; done
+        ${CURL_SPEED} ${resume_args1} ${resume_args2} \
+        -H "${resume_args3}" || :)"
+    [ -z "${VERBOSE_PROGRESS}" ] && for _ in 1 2; do _clear_line 1; done && "${1:-:}"
     return 0
 }
 
@@ -285,7 +286,7 @@ _upload_file() {
     # https://developers.google.com/drive/api/v3/manage-uploads
     if [ -r "${__file_upload_file}" ]; then
         uploadlink_upload_file="$(cat "${__file_upload_file}" || :)"
-        http_code_upload_file="$(curl --compressed -s -X PUT "${uploadlink_upload_file}" --write-out %"{http_code_upload_file}")" || :
+        http_code_upload_file="$(curl --compressed -s -X PUT "${uploadlink_upload_file}" --write-out %"{http_code}")" || :
         case "${http_code_upload_file}" in
             308) # Active Resumable URI give 308 status
                 uploaded_range_upload_file="$(raw_upload_file="$(curl --compressed -s -X PUT \
@@ -297,8 +298,8 @@ _upload_file() {
                     content_range_upload_file="$(printf "bytes %s-%s/%s\n" "$((uploaded_range_upload_file + 1))" "$((inputsize_upload_file - 1))" "${inputsize_upload_file}")"
                     content_length_upload_file="$((inputsize_upload_file - $((uploaded_range_upload_file + 1))))"
                     # Resuming interrupted uploads needs http1.1
-                    resume_args_upload_file='-s --http1.1 -H "Content-Range: '${content_range_upload_file}'"'
-                    _upload_file_from_uri
+                    resume_args1='-s' resume_args2='--http1.1' resume_args3="Content-Range: ${content_range_upload_file}"
+                    _upload_file_from_uri _clear_line
                     _collect_file_info "${upload_body_upload_file}" "${slug_upload_file}" || return 1
                     _normal_logging_upload
                     _remove_upload_session
