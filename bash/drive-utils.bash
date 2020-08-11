@@ -56,7 +56,7 @@ _drive_info() {
     "${EXTRA_LOG}" "justify" "Fetching info.." "-" 1>&2
     search_response="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files/${folder_id}?fields=${fetch}&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files/${folder_id}?fields=${fetch}&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     printf "%b" "${search_response:+${search_response}\n}"
@@ -82,11 +82,11 @@ _check_existing_file() {
     declare query search_response id
 
     "${EXTRA_LOG}" "justify" "Checking if file" " exists on gdrive.." "-" 1>&2
-    query="$(_url_encode "name='${name}' and '${rootdir}' in parents and trashed=false and 'me' in writers")"
+    query="$(_url_encode "name='${name}' and '${rootdir}' in parents and trashed=false")"
 
     search_response="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
     { _json_value id 1 1 <<< "${search_response}" 2>| /dev/null 1>&2 && printf "%s\n" "${search_response}"; } || return 1
@@ -116,7 +116,7 @@ _create_directory() {
 
     search_response="$(curl --compressed "${CURL_PROGRESS_EXTRA}" \
         -H "Authorization: Bearer ${token}" \
-        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
+        "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
 
     if ! folder_id="$(printf "%s\n" "${search_response}" | _json_value id 1 1)"; then
         declare create_folder_post_data create_folder_response
@@ -126,7 +126,7 @@ _create_directory() {
             -H "Authorization: Bearer ${token}" \
             -H "Content-Type: application/json; charset=UTF-8" \
             -d "${create_folder_post_data}" \
-            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
+            "${API_URL}/drive/${API_VERSION}/files?fields=id&supportsAllDrives=true&includeItemsFromAllDrives=true" || :)" && _clear_line 1 1>&2
     fi
     _clear_line 1 1>&2
 
@@ -261,7 +261,7 @@ _upload_file() {
             else
                 request_method="PATCH"
                 _file_id="$(_json_value id 1 1 <<< "${file_check_json}")" || { _error_logging_upload "${slug}" "${file_check_json}" && return 1; }
-                url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true"
+                url="${API_URL}/upload/drive/${API_VERSION}/files/${_file_id}?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
                 # JSON post data to specify the file name and folder under while the file to be updated
                 postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"addParents\": [\"${folder_id}\"]}"
                 STRING="Updated"
@@ -273,7 +273,7 @@ _upload_file() {
 
     # Set proper variables for creating files
     [[ ${job} = create ]] && {
-        url="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true"
+        url="${API_URL}/upload/drive/${API_VERSION}/files?uploadType=resumable&supportsAllDrives=true&includeItemsFromAllDrives=true"
         request_method="POST"
         # JSON post data to specify the file name and folder under while the file to be created
         postdata="{\"mimeType\": \"${mime_type}\",\"name\": \"${slug}\",\"parents\": [\"${folder_id}\"]}"
@@ -456,7 +456,7 @@ _clone_file() {
                     curl --compressed -s \
                         -X DELETE \
                         -H "Authorization: Bearer ${token}" \
-                        "${API_URL}/drive/${API_VERSION}/files/${_file_id}?supportsAllDrives=true" 2>| /dev/null 1>&2 || :
+                        "${API_URL}/drive/${API_VERSION}/files/${_file_id}?supportsAllDrives=true&includeItemsFromAllDrives=true" 2>| /dev/null 1>&2 || :
                     STRING="Updated"
                 else
                     _collect_file_info "${file_check_json}" || return 1
@@ -475,7 +475,7 @@ _clone_file() {
         -H "Authorization: Bearer ${token}" \
         -H "Content-Type: application/json; charset=UTF-8" \
         -d "${clone_file_post_data}" \
-        "${API_URL}/drive/${API_VERSION}/files/${file_id}/copy?supportsAllDrives=true" || :)"
+        "${API_URL}/drive/${API_VERSION}/files/${file_id}/copy?supportsAllDrives=true&includeItemsFromAllDrives=true" || :)"
     for _ in 1 2 3; do _clear_line 1; done
     _collect_file_info "${clone_file_response}" || return 1
     "${QUIET:-_print_center}" "justify" "${name} " "| ${readable_size} | ${STRING}" "="
