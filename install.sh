@@ -511,24 +511,36 @@ _start() {
             _update_config "${i}" "$(eval printf "%s" \"\$"${i}"\")" "${INFO_PATH}"/google-drive-upload.info
         done
         _update_config LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
-        _update_config PATH "${INSTALL_PATH}:"\$\{PATH\} "${INFO_PATH}"/google-drive-upload.binpath
         printf "%s\n" "${CONFIG}" >| "${INFO_PATH}"/google-drive-upload.configpath
-        ! grep -qE "(.|source) ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 2>| /dev/null &&
-            printf "\n%s\n" ". ${INFO_PATH}/google-drive-upload.binpath" >> "${SHELL_RC}"
+        _update_config PATH "${INSTALL_PATH}:"\$\{PATH\} "${INFO_PATH}"/google-drive-upload.binpath
+        ! grep -qE "(.|source) ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 2>| /dev/null && {
+            (printf "\n%s\n" ". ${INFO_PATH}/google-drive-upload.binpath" >> "${SHELL_RC}") 2>| /dev/null || {
+                shell_rc_write="error"
+                _shell_rc_err_msg() {
+                    "${QUIET:-_print_center}" "normal" " Cannot edit SHELL RC file " "=" && printf "\n"
+                    "${QUIET:-_print_center}" "normal" " ${SHELL_RC} " " " && printf "\n"
+                    "${QUIET:-_print_center}" "normal" " Add below line to your shell rc manually " "-" && printf "\n"
+                    "${QUIET:-_print_center}" "normal" ". ${INFO_PATH}/google-drive-upload.binpath" " " && printf "\n"
+                }
+            }
+        }
 
         for _ in 1 2; do _clear_line 1; done
 
         if [ "${job}" = install ]; then
-            "${QUIET:-_print_center}" "justify" "Installed Successfully" "="
-            "${QUIET:-_print_center}" "normal" "[ Command name: ${COMMAND_NAME} ]" "="
-            [ -z "${SKIP_SYNC}" ] && "${QUIET:-_print_center}" "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+            { [ -n "${shell_rc_write}" ] && _shell_rc_err_msg; } || {
+                "${QUIET:-_print_center}" "justify" "Installed Successfully" "="
+                "${QUIET:-_print_center}" "normal" "[ Command name: ${COMMAND_NAME} ]" "="
+                [ -z "${SKIP_SYNC}" ] && "${QUIET:-_print_center}" "normal" "[ Sync command name: ${SYNC_COMMAND_NAME} ]" "="
+            }
             _print_center "justify" "To use the command, do" "-"
             _newline "\n" && _print_center "normal" ". ${SHELL_RC}" " "
             _print_center "normal" "or" " "
             _print_center "normal" "restart your terminal." " "
             _newline "\n" && _print_center "normal" "To update the script in future, just run ${COMMAND_NAME} -u/--update." " "
         else
-            "${QUIET:-_print_center}" "justify" 'Successfully Updated.' "="
+            { [ -n "${shell_rc_write}" ] && _shell_rc_err_msg; } ||
+                "${QUIET:-_print_center}" "justify" 'Successfully Updated.' "="
         fi
     else
         _clear_line 1
@@ -550,21 +562,25 @@ _start() {
 ###################################################
 _uninstall() {
     _print_center "justify" "Uninstalling.." "-"
+    # Kill all sync jobs and remove sync folder
+    [ -z "${SKIP_SYNC}" ] && command -v "${SYNC_COMMAND_NAME}" 2>| /dev/null 1>&2 && {
+        "${SYNC_COMMAND_NAME}" -k all 2>| /dev/null 1>&2 || :
+        rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
+    }
+    rm -f "${INSTALL_PATH}"/"${COMMAND_NAME}" "${INSTALL_PATH}"/*utils."${INSTALLATION}" \
+        "${INFO_PATH}"/google-drive-upload.info "${INFO_PATH}"/google-drive-upload.binpath \
+        "${INFO_PATH}"/google-drive-upload.configpath "${INFO_PATH}"/update.log
+    [ -z "$(find "${INFO_PATH}" -type f)" ] && rm -rf "${INFO_PATH}"
     __bak="${INFO_PATH}/google-drive-upload.binpath"
-    if _new_rc="$(sed -e "s|. ${__bak}||g" -e "s|source ${__bak}||g" "${SHELL_RC}")" && printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
-        # Kill all sync jobs and remove sync folder
-        [ -z "${SKIP_SYNC}" ] && command -v "${SYNC_COMMAND_NAME}" 2>| /dev/null 1>&2 && {
-            "${SYNC_COMMAND_NAME}" -k all 2>| /dev/null 1>&2 || :
-            rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
-        }
-        rm -f "${INSTALL_PATH}"/"${COMMAND_NAME}" "${INSTALL_PATH}"/*utils."${INSTALLATION}" \
-            "${INFO_PATH}"/google-drive-upload.info "${INFO_PATH}"/google-drive-upload.binpath \
-            "${INFO_PATH}"/google-drive-upload.configpath "${INFO_PATH}"/update.log
-        [ -z "$(find "${INFO_PATH}" -type f)" ] && rm -rf "${INFO_PATH}"
-        _clear_line 1
-        _print_center "justify" "Uninstall complete." "="
+    if [ -w "${SHELL_RC}" ] && _new_rc="$(sed -e "s|. ${__bak}||g" -e "s|source ${__bak}||g" "${SHELL_RC}")" && printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
+        _clear_line 1 && _print_center "justify" "Uninstall complete." "="
     else
-        _print_center "justify" 'Error: Uninstall failed.' "="
+        _clear_line 1
+        "${QUIET:-_print_center}" "justify" 'Error: Uninstall failed.' "="
+        "${QUIET:-_print_center}" "normal" " Cannot edit SHELL RC file " "=" && printf "\n"
+        "${QUIET:-_print_center}" "normal" " ${SHELL_RC} " " " && printf "\n"
+        "${QUIET:-_print_center}" "normal" " Remove below line from your shell rc manually " "-" && printf "\n"
+        "${QUIET:-_print_center}" "normal" ". ${INFO_PATH}/google-drive-upload.binpath" " " && printf "\n"
     fi
     return 0
 }
