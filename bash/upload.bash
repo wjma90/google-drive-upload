@@ -627,7 +627,7 @@ main() {
     "${SKIP_INTERNET_CHECK:-_check_internet}"
 
     [[ -n ${PARALLEL_UPLOAD} ]] && {
-        { command -v mktemp 2> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
+        { command -v mktemp 1> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
     }
 
     _cleanup() {
