@@ -226,17 +226,6 @@ _get_latest_sha() {
 }
 
 ###################################################
-# Check if script terminal supports ansi escapes
-# Globals: 1 variable
-#   TERM
-# Arguments: None
-# Result: return 1 or 0
-###################################################
-_support_ansi_escapes() {
-    { [[ -t 2 && -n ${TERM} && ${TERM} =~ (xterm|rxvt|urxvt|linux|vt) ]] && return 0; } || return 1
-}
-
-###################################################
 # Method to extract specified field data from json
 # Globals: None
 # Arguments: 2
@@ -317,6 +306,17 @@ _print_center() {
     printf "\n"
 
     return 0
+}
+
+###################################################
+# Check if script terminal supports ansi escapes
+# Globals: 1 variable
+#   TERM
+# Arguments: None
+# Result: return 1 or 0
+###################################################
+_support_ansi_escapes() {
+    { [[ -t 2 && -n ${TERM} && ${TERM} =~ (xterm|rxvt|urxvt|linux|vt) ]] && return 0; } || return 1
 }
 
 ###################################################

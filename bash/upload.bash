@@ -355,7 +355,7 @@ _check_credentials() {
             done
             RESPONSE="$(curl --compressed "${CURL_PROGRESS_EXTRA}" -X POST \
                 --data "code=${CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
-            "${CURL_PROGRESS_EXTRA_CLEAR}" 1
+            _clear_line 1 1>&2
 
             REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}" || :)"
             { _get_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
@@ -394,25 +394,23 @@ _setup_root_dir() {
         "${1:-:}" ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         return 0
     }
-    _update_root_id_name() {
+    _check_root_id_name() {
         ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" "${ACCESS_TOKEN}" | _json_value name || :)"
         "${1:-:}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
         return 0
     }
 
-    [[ -n ${ROOT_FOLDER} && -z ${ROOT_FOLDER_NAME} ]] && _update_root_id_name _update_config
-
     if [[ -n ${ROOTDIR:-} ]]; then
-        ROOT_FOLDER="${ROOTDIR}" && { _check_root_id "${UPDATE_DEFAULT_ROOTDIR}" || return 1; }
+        ROOT_FOLDER="${ROOTDIR}" && { _check_root_id "${UPDATE_DEFAULT_ROOTDIR}" || return 1; } && unset ROOT_FOLDER_NAME
     elif [[ -z ${ROOT_FOLDER} ]]; then
-        { _is_terminal && "${QUIET:-_print_center}" "normal" "Enter root folder ID or URL, press enter for default ( root )" " " && printf -- "-> " &&
-            read -r ROOT_FOLDER && [[ -n ${ROOT_FOLDER} ]] && { _check_root_id || return 1; }; } || {
+        { [[ -t 1 ]] && "${QUIET:-_print_center}" "normal" "Enter root folder ID or URL, press enter for default ( root )" " " && printf -- "-> " &&
+            read -r ROOT_FOLDER && [[ -n ${ROOT_FOLDER} ]] && { _check_root_id _update_config || return 1; }; } || {
             ROOT_FOLDER="root"
             _update_config ROOT_FOLDER "${ROOT_FOLDER}" "${CONFIG}"
         }
     fi
 
-    [[ -z ${ROOT_FOLDER_NAME} ]] && _update_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
+    [[ -z ${ROOT_FOLDER_NAME} ]] && _check_root_id_name "${UPDATE_DEFAULT_ROOTDIR}"
 
     return 0
 }
@@ -466,10 +464,11 @@ _process_arguments() {
     # on successful uploads
     _share_and_print_link() {
         "${SHARE:-:}" "${1:-}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
-        [[ -z ${HIDE_INFO} ]] &&
-            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-" &&
-            _support_ansi_escapes && [[ ${COLUMNS} -gt 45 ]] && _print_center "normal" "↓ ↓ ↓" ' ' &&
+        [[ -z ${HIDE_INFO} ]] && {
+            _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
+            _support_ansi_escapes && [[ ${COLUMNS} -gt 45 ]] && _print_center "normal" "↓ ↓ ↓" ' '
             _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
+        }
         return 0
     }
 
