@@ -46,7 +46,7 @@ _check_debug() {
         if [ -z "${QUIET}" ]; then
             # check if running in terminal and support ansi escape sequences
             if _support_ansi_escapes; then
-                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2> /dev/null &&
+                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2>| /dev/null &&
                     _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
                 CURL_PROGRESS="-#" EXTRA_LOG="_print_center" CURL_PROGRESS_EXTRA="-#"
                 export CURL_PROGRESS EXTRA_LOG CURL_PROGRESS_EXTRA
@@ -233,8 +233,8 @@ _support_ansi_escapes() {
 # Result: print extracted value
 ###################################################
 _json_value() {
-    { [ "${2}" -gt 0 ] 2> /dev/null && no_of_lines_json_value="${2}"; } || :
-    { [ "${3}" -gt 0 ] 2> /dev/null && num_json_value="${3}"; } || { ! [ "${3}" = all ] && num_json_value=1; }
+    { [ "${2}" -gt 0 ] 2>| /dev/null && no_of_lines_json_value="${2}"; } || :
+    { [ "${3}" -gt 0 ] 2>| /dev/null && num_json_value="${3}"; } || { ! [ "${3}" = all ] && num_json_value=1; }
     # shellcheck disable=SC2086
     _tmp="$(grep -o "\"${1}\"\:.*" ${no_of_lines_json_value:+-m} ${no_of_lines_json_value})" || return 1
     printf "%s\n" "${_tmp}" | sed -e "s/.*\"""${1}""\"://" -e 's/[",]*$//' -e 's/["]*$//' -e 's/[,]*$//' -e "s/^ //" -e 's/^"//' -n -e "${num_json_value}"p || :
@@ -326,7 +326,7 @@ _timeout() {
             kill -9 "${child}"
         } &
         wait "${child}"
-    } 2> /dev/null 1>&2
+    } 2>| /dev/null 1>&2
 }
 
 ###################################################

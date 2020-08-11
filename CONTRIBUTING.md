@@ -148,6 +148,10 @@ _check_connection() {
 -   Add a functions only if you are going to use it multiple times, otherwise use the code directly, exceptions can be made where it can make the script messier.
 -   For more info, start from [tldp guide](https://www.tldp.org/LDP/Bash-Beginners-Guide/html/chap_01.html).
 
+Additional rules to follow:
+
+- Always use force write ( >| ), even in case of writing to /dev/null
+
 ### Pull Request Guidelines
 
 The following guidelines will increase the likelihood that your pull request will get accepted:

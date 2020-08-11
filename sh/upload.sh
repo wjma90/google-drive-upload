@@ -56,12 +56,12 @@ _short_help() {
 ###################################################
 _auto_update() {
     (
-        [ -w "${INFO_FILE}" ] && . "${INFO_FILE}" && command -v "${COMMAND_NAME}" 2> /dev/null 1>&2 && {
+        [ -w "${INFO_FILE}" ] && . "${INFO_FILE}" && command -v "${COMMAND_NAME}" 2>| /dev/null 1>&2 && {
             [ "$((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL))" -lt "$(date +'%s')" ] &&
                 _update 2>&1 1>| "${INFO_PATH}/update.log" &&
                 _update_config LAST_UPDATE_TIME "$(date +'%s')" "${INFO_FILE}"
         }
-    ) 2> /dev/null 1>&2 &
+    ) 2>| /dev/null 1>&2 &
     return 0
 }
 
@@ -190,7 +190,7 @@ _setup_arguments() {
             -p | --parallel)
                 _check_longoptions "${1}" "${2}"
                 NO_OF_PARALLEL_JOBS="${2}"
-                if [ "$((NO_OF_PARALLEL_JOBS))" -gt 0 ] 2> /dev/null 1>&2; then
+                if [ "$((NO_OF_PARALLEL_JOBS))" -gt 0 ] 2>| /dev/null 1>&2; then
                     NO_OF_PARALLEL_JOBS="$((NO_OF_PARALLEL_JOBS > 10 ? 10 : NO_OF_PARALLEL_JOBS))"
                 else
                     printf "\nError: -p/--parallel value ranges between 1 to 10.\n"
@@ -234,7 +234,7 @@ _setup_arguments() {
                 ;;
             -R | --retry)
                 _check_longoptions "${1}" "${2}"
-                if [ "$((2))" -gt 0 ] 2> /dev/null 1>&2; then
+                if [ "$((2))" -gt 0 ] 2>| /dev/null 1>&2; then
                     RETRY="${2}" && shift
                 else
                     printf "Error: -R/--retry only takes positive integers as arguments, min = 1, max = infinity.\n"
@@ -479,7 +479,7 @@ _process_arguments() {
         "${SHARE:-:}" "${1:-}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
         [ -z "${HIDE_INFO}" ] &&
             _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-" &&
-            _support_ansi_escapes && [ "$((COLUMNS))" -gt 45 ] 2> /dev/null && _print_center "normal" '^ ^ ^' ' ' &&
+            _support_ansi_escapes && [ "$((COLUMNS))" -gt 45 ] 2>| /dev/null && _print_center "normal" '^ ^ ^' ' ' &&
             _print_center "normal" "https://drive.google.com/open?id=${1:-}" " "
         return 0
     }
@@ -572,7 +572,7 @@ EOF
 
                     "${EXTRA_LOG}" "justify" "Preparing to upload.." "-"
 
-                    export DIRIDS && cores="$(($(nproc 2> /dev/null || sysctl -n hw.logicalcpu 2> /dev/null)))"
+                    export DIRIDS && cores="$(($(nproc 2>| /dev/null || sysctl -n hw.logicalcpu 2>| /dev/null)))"
                     # shellcheck disable=SC2016
                     FINAL_LIST="$(printf "%s\n" "${FILENAMES}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-${cores}}" -I {} sh -c '
                     . "${UTILS_FOLDER}"/common-utils.sh && _gen_final_list "{}" ')"
@@ -612,7 +612,7 @@ EOF
         _print_center "justify" "Given Input" ": ID" "="
         "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
         json="$(_drive_info "${gdrive_id}" "name,mimeType,size" "${ACCESS_TOKEN}")" || :
-        if ! printf "%s\n" "${json}" | _json_value code 1 1 2> /dev/null 1>&2; then
+        if ! printf "%s\n" "${json}" | _json_value code 1 1 2>| /dev/null 1>&2; then
             type="$(printf "%s\n" "${json}" | _json_value mimeType 1 1 || :)"
             name="$(printf "%s\n" "${json}" | _json_value name 1 1 || :)"
             size="$(printf "%s\n" "${json}" | _json_value size 1 1 || :)"
@@ -654,7 +654,7 @@ main() {
     "${SKIP_INTERNET_CHECK:-_check_internet}"
 
     [ -n "${PARALLEL_UPLOAD}" ] && {
-        { command -v mktemp 1> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="$(pwd)/$(date +'%s').LOG"
+        { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="$(pwd)/$(date +'%s').LOG"
     }
 
     _cleanup() {
@@ -666,7 +666,7 @@ main() {
             else
                 _auto_update
             fi
-        } 2> /dev/null || :
+        } 2>| /dev/null || :
         return 0
     }
 

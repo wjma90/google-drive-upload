@@ -89,7 +89,7 @@ _check_existing_file() {
         "${API_URL}/drive/${API_VERSION}/files?q=${query}&fields=files(id,name,mimeType)&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
-    { _json_value id 1 1 <<< "${search_response}" 2> /dev/null 1>&2 && printf "%s\n" "${search_response}"; } || return 1
+    { _json_value id 1 1 <<< "${search_response}" 2>| /dev/null 1>&2 && printf "%s\n" "${search_response}"; } || return 1
     return 0
 }
 
@@ -240,7 +240,7 @@ _upload_file() {
 
     # Handle extension-less files
     [[ ${inputname} = "${extension}" ]] && declare mime_type && {
-        mime_type="$(file --brief --mime-type "${input}" || mimetype --output-format %m "${input}")" 2> /dev/null || {
+        mime_type="$(file --brief --mime-type "${input}" || mimetype --output-format %m "${input}")" 2>| /dev/null || {
             "${QUIET:-_print_center}" "justify" "Error: file or mimetype command not found." "=" && printf "\n"
             exit 1
         }
@@ -342,7 +342,7 @@ _upload_file_main() {
     retry="${RETRY:-0}" && unset RETURN_STATUS
     until [[ ${retry} -le 0 ]] && [[ -n ${RETURN_STATUS} ]]; do
         if [[ -n ${4} ]]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file:-${2}}" "${dirid:-${3}}" "${ACCESS_TOKEN}" 2> /dev/null 1>&2 && RETURN_STATUS=1 && break
+            _upload_file "${UPLOAD_MODE:-create}" "${file:-${2}}" "${dirid:-${3}}" "${ACCESS_TOKEN}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
         else
             _upload_file "${UPLOAD_MODE:-create}" "${file:-${2}}" "${dirid:-${3}}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
         fi
@@ -397,7 +397,7 @@ _upload_folder() {
             [[ ${PARSE_MODE} = parse ]] && _clear_line 1
             _newline "\n"
 
-            until ! kill -0 "${pid}" 2> /dev/null 1>&2; do
+            until ! kill -0 "${pid}" 2>| /dev/null 1>&2; do
                 SUCCESS_STATUS="$(_count < "${TMPFILE}"SUCCESS)"
                 ERROR_STATUS="$(_count < "${TMPFILE}"ERROR)"
                 sleep 1
@@ -456,7 +456,7 @@ _clone_file() {
                     curl --compressed -s \
                         -X DELETE \
                         -H "Authorization: Bearer ${token}" \
-                        "${API_URL}/drive/${API_VERSION}/files/${_file_id}?supportsAllDrives=true" 2> /dev/null 1>&2 || :
+                        "${API_URL}/drive/${API_VERSION}/files/${_file_id}?supportsAllDrives=true" 2>| /dev/null 1>&2 || :
                     STRING="Updated"
                 else
                     _collect_file_info "${file_check_json}" || return 1
@@ -511,6 +511,6 @@ _share_id() {
         "${API_URL}/drive/${API_VERSION}/files/${id}/permissions" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
-    { _json_value id 1 1 <<< "${share_response}" 2> /dev/null 1>&2 && return 0; } ||
+    { _json_value id 1 1 <<< "${share_response}" 2>| /dev/null 1>&2 && return 0; } ||
         { printf "%s\n" "Error: Cannot Share." 1>&2 && printf "%s\n" "${share_response}" 1>&2 && return 1; }
 }

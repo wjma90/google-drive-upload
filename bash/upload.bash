@@ -55,12 +55,12 @@ _short_help() {
 ###################################################
 _auto_update() {
     (
-        [[ -w ${INFO_FILE} ]] && . "${INFO_FILE}" && command -v "${COMMAND_NAME}" 2> /dev/null 1>&2 && {
+        [[ -w ${INFO_FILE} ]] && . "${INFO_FILE}" && command -v "${COMMAND_NAME}" 2>| /dev/null 1>&2 && {
             [[ $((LAST_UPDATE_TIME + AUTO_UPDATE_INTERVAL)) -lt $(printf "%(%s)T\\n" "-1") ]] &&
                 _update 2>&1 1>| "${INFO_PATH}/update.log" &&
                 _update_config LAST_UPDATE_TIME "$(printf "%(%s)T\\n" "-1")" "${INFO_FILE}"
         }
-    ) 2> /dev/null 1>&2 &
+    ) 2>| /dev/null 1>&2 &
     return 0
 }
 
@@ -555,7 +555,7 @@ _process_arguments() {
 
                     "${EXTRA_LOG}" "justify" "Preparing to upload.." "-"
 
-                    export DIRIDS && cores="$(nproc 2> /dev/null || sysctl -n hw.logicalcpu 2> /dev/null)"
+                    export DIRIDS && cores="$(nproc 2>| /dev/null || sysctl -n hw.logicalcpu 2>| /dev/null)"
                     mapfile -t FINAL_LIST <<< "$(printf "\"%s\"\n" "${FILENAMES[@]}" | xargs -n1 -P"${NO_OF_PARALLEL_JOBS:-${cores}}" -I {} bash -c '
                     _gen_final_list "{}"')"
 
@@ -590,7 +590,7 @@ _process_arguments() {
         _print_center "justify" "Given Input" ": ID" "="
         "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
         json="$(_drive_info "${gdrive_id}" "name,mimeType,size" "${ACCESS_TOKEN}" || :)"
-        if ! _json_value code 1 1 <<< "${json}" 2> /dev/null 1>&2; then
+        if ! _json_value code 1 1 <<< "${json}" 2>| /dev/null 1>&2; then
             type="$(_json_value mimeType 1 1 <<< "${json}" || :)"
             name="$(_json_value name 1 1 <<< "${json}" || :)"
             size="$(_json_value size 1 1 <<< "${json}" || :)"
@@ -627,7 +627,7 @@ main() {
     "${SKIP_INTERNET_CHECK:-_check_internet}"
 
     [[ -n ${PARALLEL_UPLOAD} ]] && {
-        { command -v mktemp 1> /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
+        { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
     }
 
     _cleanup() {
@@ -639,7 +639,7 @@ main() {
             else
                 _auto_update
             fi
-        } 2> /dev/null || :
+        } 2>| /dev/null || :
         return 0
     }
 

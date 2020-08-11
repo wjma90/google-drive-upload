@@ -89,7 +89,7 @@ _check_existing_file() (
         "${API_URL}/drive/${API_VERSION}/files?q=${query_check_existing_file}&fields=files(id,name,mimeType)&supportsAllDrives=true" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
-    { printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2> /dev/null 1>&2 && printf "%s\n" "${response_check_existing_file}"; } || return 1
+    { printf "%s\n" "${response_check_existing_file}" | _json_value id 1 1 2>| /dev/null 1>&2 && printf "%s\n" "${response_check_existing_file}"; } || return 1
     return 0
 )
 
@@ -242,7 +242,7 @@ _upload_file() {
 
     # Handle extension-less files
     [ "${inputname_upload_file}" = "${extension_upload_file}" ] && {
-        mime_type_upload_file="$(file --brief --mime-type "${input_upload_file}" || mimetype --output-format %m "${input_upload_file}")" 2> /dev/null || {
+        mime_type_upload_file="$(file --brief --mime-type "${input_upload_file}" || mimetype --output-format %m "${input_upload_file}")" 2>| /dev/null || {
             "${QUIET:-_print_center}" "justify" "Error: file or mimetype command not found." "=" && printf "\n"
             exit 1
         }
@@ -293,7 +293,7 @@ _upload_file() {
                     -H "Content-Range: bytes */${content_length_upload_file}" \
                     --url "${uploadlink_upload_file}" --globoff -D - || :)" &&
                     printf "%s\n" "${raw_upload_file##*[R,r]ange: bytes=0-}" | while read -r line; do printf "%s\n" "${line%%$(printf '\r')}" && break; done)"
-                if [ "${uploaded_range_upload_file}" -gt 0 ] 2> /dev/null; then
+                if [ "${uploaded_range_upload_file}" -gt 0 ] 2>| /dev/null; then
                     _print_center "justify" "Resuming interrupted upload.." "-" && _newline "\n"
                     content_range_upload_file="$(printf "bytes %s-%s/%s\n" "$((uploaded_range_upload_file + 1))" "$((inputsize_upload_file - 1))" "${inputsize_upload_file}")"
                     content_length_upload_file="$((inputsize_upload_file - $((uploaded_range_upload_file + 1))))"
@@ -344,7 +344,7 @@ _upload_file_main() {
     retry_upload_file_main="${RETRY:-0}" && unset RETURN_STATUS
     until [ "${retry_upload_file_main}" -le 0 ] && [ -n "${RETURN_STATUS}" ]; do
         if [ -n "${4}" ]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" 2> /dev/null 1>&2 && RETURN_STATUS=1 && break
+            _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
         else
             _upload_file "${UPLOAD_MODE:-create}" "${file_upload_file_main:-${2}}" "${dirid_upload_file_main:-${3}}" "${ACCESS_TOKEN}" && RETURN_STATUS=1 && break
         fi
@@ -402,7 +402,7 @@ EOF
             [ "${PARSE_MODE}" = parse ] && _clear_line 1
             _newline "\n"
 
-            until ! kill -0 "${pid}" 2> /dev/null 1>&2; do
+            until ! kill -0 "${pid}" 2>| /dev/null 1>&2; do
                 SUCCESS_STATUS="$(($(wc -l < "${TMPFILE}"SUCCESS)))"
                 ERROR_STATUS="$(($(wc -l < "${TMPFILE}"ERROR)))"
                 sleep 1
@@ -461,7 +461,7 @@ _clone_file() {
                     curl --compressed -s \
                         -X DELETE \
                         -H "Authorization: Bearer ${token_clone_file}" \
-                        "${API_URL}/drive/${API_VERSION}/files/${_file_id_clone_file}?supportsAllDrives=true" 2> /dev/null 1>&2 || :
+                        "${API_URL}/drive/${API_VERSION}/files/${_file_id_clone_file}?supportsAllDrives=true" 2>| /dev/null 1>&2 || :
                     STRING="Updated"
                 else
                     _collect_file_info "${file_check_json_clone_file}" "${name_clone_file}" || return 1
@@ -516,6 +516,6 @@ _share_id() {
         "${API_URL}/drive/${API_VERSION}/files/${id_share_id}/permissions" || :)" && _clear_line 1 1>&2
     _clear_line 1 1>&2
 
-    { printf "%s\n" "${response_share_id}" | _json_value id 1 1 2> /dev/null 1>&2 && return 0; } ||
+    { printf "%s\n" "${response_share_id}" | _json_value id 1 1 2>| /dev/null 1>&2 && return 0; } ||
         { printf "%s\n" "Error: Cannot Share." 1>&2 && printf "%s\n" "${response_share_id}" 1>&2 && return 1; }
 }

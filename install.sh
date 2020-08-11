@@ -57,7 +57,7 @@ _check_debug() {
                 xterm* | rxvt* | urxvt* | linux* | vt*) ansi_escapes="true" ;;
             esac
             if [ -t 2 ] && [ -n "${ansi_escapes}" ]; then
-                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2> /dev/null &&
+                ! COLUMNS="$(_get_columns_size)" || [ "${COLUMNS:-0}" -lt 45 ] 2>| /dev/null &&
                     _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
             else
                 _print_center() { { [ $# = 3 ] && printf "%s\n" "[ ${2} ]"; } || { printf "%s\n" "[ ${2}${3} ]"; }; }
@@ -82,19 +82,19 @@ _check_dependencies() {
     unset error_list warning_list
 
     for program in curl find xargs mkdir rm grep sed; do
-        command -v "${program}" 2> /dev/null 1>&2 || error_list="${error_list}\n${program}"
+        command -v "${program}" 2>| /dev/null 1>&2 || error_list="${error_list}\n${program}"
     done
 
-    { ! command -v file && ! command -v mimetype; } 2> /dev/null 1>&2 &&
+    { ! command -v file && ! command -v mimetype; } 2>| /dev/null 1>&2 &&
         error_list="${error_list}\n\"file or mimetype\""
 
     [ "${posix_check_dependencies}" != 0 ] &&
         for program in awk cat date ps sleep; do
-            command -v "${program}" 2> /dev/null 1>&2 || error_list="${error_list}\n${program}"
+            command -v "${program}" 2>| /dev/null 1>&2 || error_list="${error_list}\n${program}"
         done
 
     for program in ps tail; do
-        command -v "${program}" 2> /dev/null 1>&2 || warning_list="${warning_list}\n${program}"
+        command -v "${program}" 2>| /dev/null 1>&2 || warning_list="${warning_list}\n${program}"
     done
 
     [ -n "${warning_list}" ] && {
@@ -363,7 +363,7 @@ _timeout() {
             kill -9 "${child}"
         } &
         wait "${child}"
-    } 2> /dev/null 1>&2
+    } 2>| /dev/null 1>&2
 }
 
 ###################################################
@@ -423,7 +423,7 @@ _download_files() {
     files_with_commits="$(_get_files_and_commits "${REPO}" "${LATEST_CURRENT_SHA}" "${INSTALLATION}" | grep -E "upload.${INSTALLATION}|utils.${INSTALLATION}|sync.${INSTALLATION}")"
     repo="${REPO}"
 
-    cd "${INSTALL_PATH}" 2> /dev/null 1>&2 || exit 1
+    cd "${INSTALL_PATH}" 2>| /dev/null 1>&2 || exit 1
 
     while read -r line <&4; do
         file="${line%%__.__*}" && sha="${line##*__.__}"
@@ -434,7 +434,7 @@ _download_files() {
             *) local_file="${file##${INSTALLATION}\/}" ;;
         esac
 
-        [ -f "${local_file}" ] && [ "$(sed -n -e '$p' "${local_file}" 2> /dev/null 1>&2 || :)" = "#${sha}" ] && continue
+        [ -f "${local_file}" ] && [ "$(sed -n -e '$p' "${local_file}" 2>| /dev/null 1>&2 || :)" = "#${sha}" ] && continue
         _print_center "justify" "${local_file}" "-"
         # shellcheck disable=SC2086
         ! curl -s --compressed "https://raw.githubusercontent.com/${repo}/${sha}/${file}" -o "${local_file}" && return 1
@@ -445,7 +445,7 @@ _download_files() {
 $(printf "%s\n" "${files_with_commits}")
 EOF
 
-    cd - 2> /dev/null 1>&2 || exit 1
+    cd - 2>| /dev/null 1>&2 || exit 1
     return 0
 }
 
@@ -455,7 +455,7 @@ EOF
 _inject_utils_path() {
     unset upload_inject_utils_path sync_inject_utils_path
 
-    ! grep -q "UTILS_FOLDER=\"${INSTALL_PATH}\"" "${INSTALL_PATH}/${COMMAND_NAME}" 2> /dev/null 1>&2 &&
+    ! grep -q "UTILS_FOLDER=\"${INSTALL_PATH}\"" "${INSTALL_PATH}/${COMMAND_NAME}" 2>| /dev/null 1>&2 &&
         upload_inject_utils_path="$(
             read -r line < "${INSTALL_PATH}/${COMMAND_NAME}" && printf "%s\n" "${line}" &&
                 printf "%s\n" "UTILS_FOLDER=\"${INSTALL_PATH}\"" &&
@@ -464,7 +464,7 @@ _inject_utils_path() {
         printf "%s\n" "${upload_inject_utils_path}" >| "${INSTALL_PATH}/${COMMAND_NAME}"
 
     [ -n "${SKIP_SYNC}" ] && return 0
-    ! grep -q "UTILS_FOLDER=\"${INSTALL_PATH}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}" 2> /dev/null 1>&2 &&
+    ! grep -q "UTILS_FOLDER=\"${INSTALL_PATH}\"" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}" 2>| /dev/null 1>&2 &&
         sync_inject_utils_path="$(
             read -r line < "${INSTALL_PATH}/${SYNC_COMMAND_NAME}" && printf "%s\n" "${line}"
             printf "%s\n" "UTILS_FOLDER=\"${INSTALL_PATH}\""
@@ -513,7 +513,7 @@ _start() {
         _update_config LATEST_INSTALLED_SHA "${LATEST_CURRENT_SHA}" "${INFO_PATH}"/google-drive-upload.info
         _update_config PATH "${INSTALL_PATH}:"\$\{PATH\} "${INFO_PATH}"/google-drive-upload.binpath
         printf "%s\n" "${CONFIG}" >| "${INFO_PATH}"/google-drive-upload.configpath
-        ! grep -qE "(.|source) ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 2> /dev/null &&
+        ! grep -qE "(.|source) ${INFO_PATH}/google-drive-upload.binpath" "${SHELL_RC}" 2>| /dev/null &&
             printf "\n%s\n" ". ${INFO_PATH}/google-drive-upload.binpath" >> "${SHELL_RC}"
 
         for _ in 1 2; do _clear_line 1; done
@@ -553,8 +553,8 @@ _uninstall() {
     __bak="${INFO_PATH}/google-drive-upload.binpath"
     if _new_rc="$(sed -e "s|. ${__bak}||g" -e "s|source ${__bak}||g" "${SHELL_RC}")" && printf "%s\n" "${_new_rc}" >| "${SHELL_RC}"; then
         # Kill all sync jobs and remove sync folder
-        [ -z "${SKIP_SYNC}" ] && command -v "${SYNC_COMMAND_NAME}" 2> /dev/null 1>&2 && {
-            "${SYNC_COMMAND_NAME}" -k all 2> /dev/null 1>&2 || :
+        [ -z "${SKIP_SYNC}" ] && command -v "${SYNC_COMMAND_NAME}" 2>| /dev/null 1>&2 && {
+            "${SYNC_COMMAND_NAME}" -k all 2>| /dev/null 1>&2 || :
             rm -rf "${INFO_PATH}"/sync "${INSTALL_PATH:?}"/"${SYNC_COMMAND_NAME}"
         }
         rm -f "${INSTALL_PATH}"/"${COMMAND_NAME}" "${INSTALL_PATH}"/*utils."${INSTALLATION}" \
@@ -621,7 +621,7 @@ _setup_arguments() {
                 ;;
             -t | --time)
                 _check_longoptions "${1}" "${2}"
-                if [ "${2}" -gt 0 ] 2> /dev/null; then
+                if [ "${2}" -gt 0 ] 2>| /dev/null; then
                     AUTO_UPDATE_INTERVAL="$((2 * 86400))" && shift
                 else
                     printf "\nError: -t/--time value can only be a positive integer.\n"
@@ -663,7 +663,7 @@ _setup_arguments() {
 }
 
 main() {
-    { command -v bash && [ "$(bash --version | grep -oE '[0-9]+\.[0-9]' | grep -o '^[0-9]')" -ge 4 ] && INSTALLATION="bash"; } 2> /dev/null 1>&2
+    { command -v bash && [ "$(bash --version | grep -oE '[0-9]+\.[0-9]' | grep -o '^[0-9]')" -ge 4 ] && INSTALLATION="bash"; } 2>| /dev/null 1>&2
     _check_dependencies "${?}" && INSTALLATION="${INSTALLATION:-sh}"
 
     set -o errexit -o noclobber
@@ -671,8 +671,8 @@ main() {
     _variables && _setup_arguments "${@}"
 
     _check_existing_command() {
-        if command -v "${COMMAND_NAME}" 2> /dev/null 1>&2; then
-            if grep -q COMMAND_NAME "${INFO_PATH}"/google-drive-upload.info 2> /dev/null 1>&2; then
+        if command -v "${COMMAND_NAME}" 2>| /dev/null 1>&2; then
+            if grep -q COMMAND_NAME "${INFO_PATH}"/google-drive-upload.info 2>| /dev/null 1>&2; then
                 return 0
             else
                 printf "%s\n" "Error: Cannot validate existing installation, make sure no other program is installed as ${COMMAND_NAME}."

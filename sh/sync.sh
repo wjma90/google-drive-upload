@@ -48,7 +48,7 @@ _short_help() {
 # Result: return 0 or 1
 ###################################################
 _check_pid() {
-    { ps -p "${1}" 2> /dev/null 1>&2 && return 0; } || return 1
+    { ps -p "${1}" 2>| /dev/null 1>&2 && return 0; } || return 1
 }
 
 ###################################################
@@ -115,7 +115,7 @@ _remove_job() {
 
     rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}${local_folder_remove_job:-${3}}"
     # Cleanup dir if empty
-    { [ -z "$(find "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}" -type f)" ] && rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}"; } 2> /dev/null 1>&2
+    { [ -z "$(find "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}" -type f)" ] && rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}"; } 2>| /dev/null 1>&2
     return 0
 }
 
@@ -129,7 +129,7 @@ _remove_job() {
 ###################################################
 _kill_job() {
     pid_kill_job="${1}"
-    kill -9 "${pid_kill_job}" 2> /dev/null 1>&2 || :
+    kill -9 "${pid_kill_job}" 2>| /dev/null 1>&2 || :
     _remove_job "${pid_kill_job}"
     printf "Killed.\n"
 }
@@ -434,7 +434,7 @@ _setup_arguments() {
                 ;;
             -p | --pid)
                 _check_longoptions "${1}" "${2}"
-                if [ "${2}" -gt 0 ] 2> /dev/null 1>&2; then
+                if [ "${2}" -gt 0 ] 2>| /dev/null 1>&2; then
                     ALL_PIDS="${ALL_PIDS}
                               ${2}" && shift
                     JOB=" ${JOBS} PIDS "
@@ -451,7 +451,7 @@ _setup_arguments() {
             -l | --logs) JOB_TYPE=" ${JOB_TYPE} SHOW_LOGS " && SHOW_LOGS="true" ;;
             -t | --time)
                 _check_longoptions "${1}" "${2}"
-                if [ "${2}" -gt 0 ] 2> /dev/null 1>&2; then
+                if [ "${2}" -gt 0 ] 2>| /dev/null 1>&2; then
                     case "${2}" in
                         default*) UPDATE_DEFAULT_TIME_TO_SLEEP="_update_config" ;;
                     esac
@@ -538,7 +538,7 @@ _config_variables() {
     COMMAND_NAME="${CUSTOM_COMMAND_NAME:-${COMMAND_NAME}}"
 
     # Check if command exist, not necessary but just in case.
-    ! command -v "${COMMAND_NAME}" 2> /dev/null 1>&2 &&
+    ! command -v "${COMMAND_NAME}" 2>| /dev/null 1>&2 &&
         printf "Error: %s is not installed, use -c/--command to specify.\n" "${COMMAND_NAME}" 1>&2 &&
         exit 1
 

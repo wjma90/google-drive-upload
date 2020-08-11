@@ -48,7 +48,7 @@ _short_help() {
 # Result: return 0 or 1
 ###################################################
 _check_pid() {
-    { ps -p "${1}" 2> /dev/null 1>&2 && return 0; } || return 1
+    { ps -p "${1}" 2>| /dev/null 1>&2 && return 0; } || return 1
 }
 
 ###################################################
@@ -114,7 +114,7 @@ _remove_job() {
 
     rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}${local_folder_remove_job:-${3}}"
     # Cleanup dir if empty
-    { [[ -z $(find "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}" -type f || :) ]] && rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}"; } 2> /dev/null 1>&2
+    { [[ -z $(find "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}" -type f || :) ]] && rm -rf "${SYNC_DETAIL_DIR:?}/${drive_folder_remove_job:-${2}}"; } 2>| /dev/null 1>&2
     return 0
 }
 
@@ -128,7 +128,7 @@ _remove_job() {
 ###################################################
 _kill_job() {
     declare pid="${1}"
-    kill -9 "${pid}" 2> /dev/null 1>&2 || :
+    kill -9 "${pid}" 2>| /dev/null 1>&2 || :
     _remove_job "${pid}"
     printf "Killed.\n"
 }
@@ -500,7 +500,7 @@ _config_variables() {
     COMMAND_NAME="${CUSTOM_COMMAND_NAME:-${COMMAND_NAME}}"
 
     # Check if command exist, not necessary but just in case.
-    ! command -v "${COMMAND_NAME}" 2> /dev/null 1>&2 &&
+    ! command -v "${COMMAND_NAME}" 2>| /dev/null 1>&2 &&
         printf "Error: %s is not installed, use -c/--command to specify.\n" "${COMMAND_NAME}" 1>&2 &&
         exit 1
 
