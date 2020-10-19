@@ -27,8 +27,6 @@ jobs:
         filters: |
           install:
             - 'install.sh'
-          upload:
-            - '+(sh|bash|merge.sh)'
     - name: 'Install Google drive upload'
       if: steps.filter.outputs.install == 'true'
       run: |
@@ -41,7 +39,6 @@ jobs:
           sh install.sh -U  && sh install.sh -c custom_gupload sync="custom_gsync"
               custom_gupload --info && custom_gsync --help
     - name: 'Format and merge test'
-      if: steps.filter.outputs.format_and_merge == 'true'
       run: |
           set -e
           { { command -v apt-get && apt-get install snapd -yqq && snap install shfmt ;} ||
