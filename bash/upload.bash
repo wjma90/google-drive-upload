@@ -370,15 +370,40 @@ _check_credentials() {
         fi
     }
 
-    [[ -z ${ACCESS_TOKEN} || ${ACCESS_TOKEN_EXPIRY} -lt "$(printf "%(%s)T\\n" "-1")" ]] && { _get_access_token_and_update || return 1; }
+    [[ -z ${ACCESS_TOKEN} || ${ACCESS_TOKEN_EXPIRY:-0} -lt "$(printf "%(%s)T\\n" "-1")" ]] && { _get_access_token_and_update || return 1; }
+
+    # launch a background service to check access token and update it
+    # checks ACCESS_TOKEN_EXPIRY, try to update before 5 mins of expiry, a fresh token gets 60 mins
+    # process will be killed when script exits
+    {
+        while :; do
+            # print access token to tmpfile so every function can source it and get access_token value
+            printf "%s\n" "export ACCESS_TOKEN=\"${ACCESS_TOKEN}\"" >| "${TMPFILE}_ACCESS_TOKEN"
+            CURRENT_TIME="$(printf "%(%s)T\\n" "-1")"
+            REMAINING_TOKEN_TIME="$((ACCESS_TOKEN_EXPIRY - CURRENT_TIME))"
+            if [[ ${REMAINING_TOKEN_TIME} -le 300 ]]; then
+                # timeout after 30 seconds, it shouldn't take too long anyway
+                _timeout 30 _get_access_token_and_update || :
+            else
+                TOKEN_PROCESS_TIME_TO_SLEEP="$(if [[ ${REMAINING_TOKEN_TIME} -le 301 ]]; then
+                    printf "0\n"
+                else
+                    printf "%s\n" "$((REMAINING_TOKEN_TIME - 300))"
+                fi)"
+                sleep "${TOKEN_PROCESS_TIME_TO_SLEEP}"
+            fi
+            sleep 1
+        done
+    } &
+    ACCESS_TOKEN_SERVICE_PID="${!}"
 
     return 0
 }
 
 ###################################################
 # Setup root directory where all file/folders will be uploaded/updated
-# Globals: 6 variables, 5 functions
-#   Variables - ROOTDIR, ROOT_FOLDER, UPDATE_DEFAULT_ROOTDIR, CONFIG, QUIET, ACCESS_TOKEN
+# Globals: 5 variables, 5 functions
+#   Variables - ROOTDIR, ROOT_FOLDER, UPDATE_DEFAULT_ROOTDIR, CONFIG, QUIET
 #   Functions - _print_center, _drive_info, _extract_id, _update_config, _json_value
 # Arguments: 1
 #   ${1} = Positive integer ( amount of time in seconds to sleep )
@@ -391,7 +416,7 @@ _check_credentials() {
 _setup_root_dir() {
     _check_root_id() {
         declare json rootid
-        json="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "id" "${ACCESS_TOKEN}")"
+        json="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "id")"
         if ! rootid="$(_json_value id 1 1 <<< "${json}")"; then
             { [[ ${json} =~ "File not found" ]] && "${QUIET:-_print_center}" "justify" "Given root folder" " ID/URL invalid." "=" 1>&2; } || {
                 printf "%s\n" "${json}" 1>&2
@@ -403,7 +428,7 @@ _setup_root_dir() {
         return 0
     }
     _check_root_id_name() {
-        ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" "${ACCESS_TOKEN}" | _json_value name || :)"
+        ROOT_FOLDER_NAME="$(_drive_info "$(_extract_id "${ROOT_FOLDER}")" "name" | _json_value name || :)"
         "${1:-:}" ROOT_FOLDER_NAME "${ROOT_FOLDER_NAME}" "${CONFIG}"
         return 0
     }
@@ -427,8 +452,8 @@ _setup_root_dir() {
 # Setup Workspace folder
 # Check if the given folder exists in google drive.
 # If not then the folder is created in google drive under the configured root folder.
-# Globals: 3 variables, 3 functions
-#   Variables - FOLDERNAME, ROOT_FOLDER, ACCESS_TOKEN
+# Globals: 2 variables, 3 functions
+#   Variables - FOLDERNAME, ROOT_FOLDER
 #   Functions - _create_directory, _drive_info, _json_value
 # Arguments: None
 # Result: Read Description
@@ -438,9 +463,9 @@ _setup_workspace() {
         WORKSPACE_FOLDER_ID="${ROOT_FOLDER}"
         WORKSPACE_FOLDER_NAME="${ROOT_FOLDER_NAME}"
     else
-        WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}" "${ACCESS_TOKEN}")" ||
+        WORKSPACE_FOLDER_ID="$(_create_directory "${FOLDERNAME}" "${ROOT_FOLDER}")" ||
             { printf "%s\n" "${WORKSPACE_FOLDER_ID}" 1>&2 && return 1; }
-        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name "${ACCESS_TOKEN}" | _json_value name 1 1)" ||
+        WORKSPACE_FOLDER_NAME="$(_drive_info "${WORKSPACE_FOLDER_ID}" name | _json_value name 1 1)" ||
             { printf "%s\n" "${WORKSPACE_FOLDER_NAME}" 1>&2 && return 1; }
     fi
     return 0
@@ -463,16 +488,16 @@ _setup_workspace() {
 ###################################################
 _process_arguments() {
     export API_URL API_VERSION TOKEN_URL ACCESS_TOKEN \
-        LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY UTILS_FOLDER \
+        LOG_FILE_ID OVERWRITE UPLOAD_MODE SKIP_DUPLICATES CURL_SPEED RETRY UTILS_FOLDER TMPFILE \
         QUIET VERBOSE VERBOSE_PROGRESS CURL_PROGRESS CURL_PROGRESS_EXTRA CURL_PROGRESS_EXTRA_CLEAR COLUMNS EXTRA_LOG PARALLEL_UPLOAD
 
     export -f _bytes_to_human _dirname _json_value _url_encode _support_ansi_escapes _newline _print_center_quiet _print_center _clear_line \
-        _get_access_token_and_update _check_existing_file _upload_file _upload_file_main _clone_file _collect_file_info _generate_upload_link _upload_file_from_uri _full_upload \
+        _api_request _get_access_token_and_update _check_existing_file _upload_file _upload_file_main _clone_file _collect_file_info _generate_upload_link _upload_file_from_uri _full_upload \
         _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _get_rootdir_id
 
     # on successful uploads
     _share_and_print_link() {
-        "${SHARE:-:}" "${1:-}" "${ACCESS_TOKEN}" "${SHARE_EMAIL}"
+        "${SHARE:-:}" "${1:-}" "${SHARE_EMAIL}"
         [[ -z ${HIDE_INFO} ]] && {
             _print_center "justify" "DriveLink" "${SHARE:+ (SHARED)}" "-"
             _support_ansi_escapes && [[ ${COLUMNS} -gt 45 ]] && _print_center "normal" "↓ ↓ ↓" ' '
@@ -526,7 +551,7 @@ _process_arguments() {
 
                     "${QUIET:-_print_center}" "justify" "Folder: ${FOLDER_NAME} " "| ${NO_OF_FILES} File(s)" "=" && printf "\n"
                     "${EXTRA_LOG}" "justify" "Creating folder.." "-"
-                    { ID="$(_create_directory "${input}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" && export ID; } ||
+                    { ID="$(_create_directory "${input}" "${NEXTROOTDIRID}")" && export ID; } ||
                         { "${QUIET:-_print_center}" "normal" "Folder creation failed" "-" && printf "%s\n\n\n" "${ID}" 1>&2 && continue; }
                     _clear_line 1 && DIRIDS="${ID}"
 
@@ -550,7 +575,7 @@ _process_arguments() {
                             NEXTROOTDIRID="${__temp%%"|:_//_:|${__dir}|:_//_:|"}"
 
                         NEWDIR="${dir##*/}" && _print_center "justify" "Name: ${NEWDIR}" "-" 1>&2
-                        ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}" "${ACCESS_TOKEN}")" ||
+                        ID="$(_create_directory "${NEWDIR}" "${NEXTROOTDIRID}")" ||
                             { "${QUIET:-_print_center}" "normal" "Folder creation failed" "-" && printf "%s\n\n\n" "${ID}" 1>&2 && continue; }
 
                         # Store sub-folder directory IDs and it's path for later use.
@@ -592,7 +617,7 @@ _process_arguments() {
         { [[ ${Aseen[${gdrive_id}]} ]] && continue; } || Aseen[${gdrive_id}]=x
         _print_center "justify" "Given Input" ": ID" "="
         "${EXTRA_LOG}" "justify" "Checking if id exists.." "-"
-        json="$(_drive_info "${gdrive_id}" "name,mimeType,size" "${ACCESS_TOKEN}" || :)"
+        json="$(_drive_info "${gdrive_id}" "name,mimeType,size" || :)"
         if ! _json_value code 1 1 <<< "${json}" 2>| /dev/null 1>&2; then
             type="$(_json_value mimeType 1 1 <<< "${json}" || :)"
             name="$(_json_value name 1 1 <<< "${json}" || :)"
@@ -604,7 +629,7 @@ _process_arguments() {
             else
                 _print_center "justify" "Given Input" ": File ID" "="
                 _print_center "justify" "Upload Method" ": ${SKIP_DUPLICATES:-${OVERWRITE:-Create}}" "=" && _newline "\n"
-                _clone_file "${UPLOAD_MODE:-create}" "${gdrive_id}" "${WORKSPACE_FOLDER_ID}" "${ACCESS_TOKEN}" "${name}" "${size}" ||
+                _clone_file "${UPLOAD_MODE:-create}" "${gdrive_id}" "${WORKSPACE_FOLDER_ID}" "${name}" "${size}" ||
                     { for _ in 1 2; do _clear_line 1; done && continue; }
             fi
             _share_and_print_link "${FILE_ID}"
@@ -631,13 +656,22 @@ main() {
     _setup_arguments "${@}"
     "${SKIP_INTERNET_CHECK:-_check_internet}"
 
-    [[ -n ${PARALLEL_UPLOAD} ]] && {
-        { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
-    }
+    # create tempfile
+    { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="${PWD}/$(printf "%(%s)T\\n" "-1").LOG"
 
     _cleanup() {
         {
-            [[ -n ${PARALLEL_UPLOAD} ]] && rm -f "${TMPFILE:?}"*
+            rm -f "${TMPFILE:?}"*
+
+            # grab all chidren processes of access token service
+            # https://askubuntu.com/a/512872
+            token_service_pids="$(ps --ppid="${ACCESS_TOKEN_SERVICE_PID}" -o pid=)"
+            # first kill parent id, then children processes
+            kill "${ACCESS_TOKEN_SERVICE_PID}"
+            for pid in ${token_service_pids}; do
+                kill "${pid}"
+            done
+
             export abnormal_exit && if [[ -n ${abnormal_exit} ]]; then
                 printf "\n\n%s\n" "Script exited manually."
                 kill -- -$$ &
