@@ -1220,8 +1220,8 @@ _setup_arguments() {
 ###################################################
 _check_credentials() {
     # Config file is created automatically after first run
-    [ -r "${CONFIG}" ] &&
-        . "${CONFIG}" && "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
+    [ -r "${CONFIG}" ] && . "${CONFIG}"
+    "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
 
     ! [ -t 1 ] && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
         printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
