@@ -1208,6 +1208,9 @@ _setup_arguments() {
     # If no input, then check if -C option was used or not.
     [[ -z ${FINAL_LOCAL_INPUT_ARRAY[*]:-${FINAL_ID_INPUT_ARRAY[*]:-${FOLDERNAME}}} ]] && _short_help
 
+    # create info path folder, can be missing if gupload was not installed with install.sh
+    mkdir -p "${INFO_PATH}"
+
     return 0
 }
 
