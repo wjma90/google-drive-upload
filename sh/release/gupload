@@ -1586,7 +1586,7 @@ main() {
     _setup_arguments "${@}"
     "${SKIP_INTERNET_CHECK:-_check_internet}"
 
-    { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="$(pwd)/$(date +'%s').LOG"
+    { command -v mktemp 1>| /dev/null && TMPFILE="$(mktemp -u)"; } || TMPFILE="$(pwd)/.$(_t="$(date +'%s')" && printf "%s\n" "$((_t * _t))").LOG"
 
     _cleanup() {
         {
