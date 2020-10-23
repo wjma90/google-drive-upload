@@ -697,6 +697,12 @@ main() {
                 kill "${pid}"
             done
 
+            # manually kill all script children pids
+            script_children_pids="$(ps --ppid="$$" -o pid=)"
+            for pid in ${script_children_pids}; do
+                kill "${pid}"
+            done
+
             export abnormal_exit && if [ -n "${abnormal_exit}" ]; then
                 printf "\n\n%s\n" "Script exited manually."
                 kill -9 -$$ &
