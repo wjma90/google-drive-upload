@@ -26,7 +26,7 @@ _get_access_token_and_update() {
         _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
         _update_config ACCESS_TOKEN_EXPIRY "$(($(printf "%(%s)T\\n" "-1") + $(_json_value expires_in 1 1 <<< "${RESPONSE}") - 1))" "${CONFIG}"
     else
-        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." 1>&2
+        "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
         printf "%s\n" "${RESPONSE}" 1>&2
         return 1
     fi
