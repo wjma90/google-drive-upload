@@ -189,11 +189,24 @@ _extract_id() {
 # Result: Update access_token and expiry else print error
 ###################################################
 _get_access_token_and_update() {
-    RESPONSE="${1:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
+    case "${1:?Error: sa or normal}" in
+        normal)
+            RESPONSE="${2:-$(curl --compressed -s -X POST --data "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}&grant_type=refresh_token" "${TOKEN_URL}")}" || :
+            ;;
+        sa)
+            assertion_data="${2:?Error: Missing assertion data.}"
+            RESPONSE="$(curl --compressed -s --data "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${assertion_data}" "${TOKEN_URL}")" || :
+            # sa token jsons are not pretty printed
+            # shellcheck disable=SC1004
+            RESPONSE="$(printf "%s\n" "${RESPONSE}" | sed -e 's/,"/\
+"/g')"
+            ;;
+    esac
+
     if ACCESS_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value access_token 1 1)"; then
         ACCESS_TOKEN_EXPIRY="$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))"
-        _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-        _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+        _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN" "${ACCESS_TOKEN}" "${CONFIG}"
+        _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
     else
         "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
         printf "%s\n" "${RESPONSE}" 1>&2

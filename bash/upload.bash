@@ -9,6 +9,7 @@ Usage:\n ${0##*/} [options.. ] <filename> <foldername>\n
 Foldername argument is optional. If not provided, the file will be uploaded to preconfigured google drive.\n
 File name argument is optional if create directory option is used.\n
 Options:\n
+  -sa | --service-accounts 'service account json file path' - Use a bot service account. Should be in proper json format.\n
   -c | -C | --create-dir <foldername> - option to create directory. Will provide folder id. Can be used to provide input folder, see README.\n
   -r | --root-dir <google_folderid> or <google_folder_url> - google folder ID/URL to which the file/directory is going to upload.
       If you want to change the default value, then use this format, -r/--root-dir default=root_folder_id/root_folder_url\n
@@ -111,14 +112,15 @@ _setup_arguments() {
     # De-initialize if any variables set already.
     unset FIRST_INPUT FOLDER_INPUT FOLDERNAME LOCAL_INPUT_ARRAY ID_INPUT_ARRAY
     unset PARALLEL NO_OF_PARALLEL_JOBS SHARE SHARE_EMAIL OVERWRITE SKIP_DUPLICATES SKIP_SUBDIRS ROOTDIR QUIET
-    unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY
+    unset VERBOSE VERBOSE_PROGRESS DEBUG LOG_FILE_ID CURL_SPEED RETRY OPENSSL_ERROR
     CURL_PROGRESS="-s" EXTRA_LOG=":" CURL_PROGRESS_EXTRA="-s"
     INFO_PATH="${HOME}/.google-drive-upload" CONFIG_INFO="${INFO_PATH}/google-drive-upload.configpath"
     [[ -f ${CONFIG_INFO} ]] && . "${CONFIG_INFO}"
     CONFIG="${CONFIG:-${HOME}/.googledrive.conf}"
 
     # Configuration variables # Remote gDrive variables
-    unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN
+    unset ROOT_FOLDER CLIENT_ID CLIENT_SECRET REFRESH_TOKEN ACCESS_TOKEN \
+        SERVICE_ACCOUNT SERVICE_ACCOUNT_ACCESS_TOKEN SERVICE_ACCOUNT_ACCESS_TOKEN_EXPIRY
     API_URL="https://www.googleapis.com"
     API_VERSION="v3"
     SCOPE="${API_URL}/auth/drive"
@@ -145,6 +147,11 @@ _setup_arguments() {
             -h | --help) _usage ;;
             -D | --debug) DEBUG="true" && export DEBUG ;;
             --info) _version_info ;;
+            -sa | --service-account)
+                _check_longoptions "${1}" "${2}"
+                SERVICE_ACCOUNT_FILE="${2}" && shift
+                ! [[ -f ${SERVICE_ACCOUNT_FILE} ]] && printf "%s\n" "Error: Service account json file exist ( ${SERVICE_ACCOUNT_FILE} )." 1>&2 && exit 1
+                ;;
             -c | -C | --create-dir)
                 _check_longoptions "${1}" "${2}"
                 FOLDERNAME="${2}" && shift
@@ -300,107 +307,134 @@ _check_credentials() {
         printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
     }
 
-    # Following https://developers.google.com/identity/protocols/oauth2#size
-    CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
-    CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
-    REFRESH_TOKEN_REGEX='[0-9]//[0-9A-Za-z_-]+'     # 512 bytes
-    ACCESS_TOKEN_REGEX='ya29\.[0-9A-Za-z_-]+'       # 2048 bytes
-    AUTHORIZATION_CODE_REGEX='[0-9]/[0-9A-Za-z_-]+' # 256 bytes
+    ACCESS_TOKEN_REGEX='ya29\.[0-9A-Za-z_-]+' # 2048 bytes
 
-    until [[ -n ${CLIENT_ID} && -n ${CLIENT_ID_VALID} ]]; do
-        [[ -n ${CLIENT_ID} ]] && {
-            if [[ ${CLIENT_ID} =~ ${CLIENT_ID_REGEX} ]]; then
-                [[ -n ${client_id} ]] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
-                CLIENT_ID_VALID="true" && continue
-            else
-                { [[ -n ${client_id} ]] && message="- Try again"; } || message="in config ( ${CONFIG} )"
-                "${QUIET:-_print_center}" "normal" " Invalid Client ID ${message} " "-" && unset CLIENT_ID client_id
-            fi
+    if [[ -z ${SERVICE_ACCOUNT_FILE} ]]; then
+        # Following https://developers.google.com/identity/protocols/oauth2#size
+        CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
+        CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
+        REFRESH_TOKEN_REGEX='[0-9]//[0-9A-Za-z_-]+'     # 512 bytes
+        AUTHORIZATION_CODE_REGEX='[0-9]/[0-9A-Za-z_-]+' # 256 bytes
+
+        until [[ -n ${CLIENT_ID} && -n ${CLIENT_ID_VALID} ]]; do
+            [[ -n ${CLIENT_ID} ]] && {
+                if [[ ${CLIENT_ID} =~ ${CLIENT_ID_REGEX} ]]; then
+                    [[ -n ${client_id} ]] && _update_config CLIENT_ID "${CLIENT_ID}" "${CONFIG}"
+                    CLIENT_ID_VALID="true" && continue
+                else
+                    { [[ -n ${client_id} ]] && message="- Try again"; } || message="in config ( ${CONFIG} )"
+                    "${QUIET:-_print_center}" "normal" " Invalid Client ID ${message} " "-" && unset CLIENT_ID client_id
+                fi
+            }
+            [[ -z ${client_id} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ID " "-"
+            [[ -n ${client_id} ]] && _clear_line 1
+            printf -- "-> "
+            read -r CLIENT_ID && client_id=1
+        done
+
+        until [[ -n ${CLIENT_SECRET} && -n ${CLIENT_SECRET_VALID} ]]; do
+            [[ -n ${CLIENT_SECRET} ]] && {
+                if [[ ${CLIENT_SECRET} =~ ${CLIENT_SECRET_REGEX} ]]; then
+                    [[ -n ${client_secret} ]] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
+                    CLIENT_SECRET_VALID="true" && continue
+                else
+                    { [[ -n ${client_secret} ]] && message="- Try again"; } || message="in config ( ${CONFIG} )"
+                    "${QUIET:-_print_center}" "normal" " Invalid Client Secret ${message} " "-" && unset CLIENT_SECRET client_secret
+                fi
+            }
+            [[ -z ${client_secret} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client Secret " "-"
+            [[ -n ${client_secret} ]] && _clear_line 1
+            printf -- "-> "
+            read -r CLIENT_SECRET && client_secret=1
+        done
+
+        [[ -n ${REFRESH_TOKEN} ]] && {
+            ! [[ ${REFRESH_TOKEN} =~ ${REFRESH_TOKEN_REGEX} ]] &&
+                "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-" && unset REFRESH_TOKEN
         }
-        [[ -z ${client_id} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client ID " "-"
-        [[ -n ${client_id} ]] && _clear_line 1
-        printf -- "-> "
-        read -r CLIENT_ID && client_id=1
-    done
-
-    until [[ -n ${CLIENT_SECRET} && -n ${CLIENT_SECRET_VALID} ]]; do
-        [[ -n ${CLIENT_SECRET} ]] && {
-            if [[ ${CLIENT_SECRET} =~ ${CLIENT_SECRET_REGEX} ]]; then
-                [[ -n ${client_secret} ]] && _update_config CLIENT_SECRET "${CLIENT_SECRET}" "${CONFIG}"
-                CLIENT_SECRET_VALID="true" && continue
-            else
-                { [[ -n ${client_secret} ]] && message="- Try again"; } || message="in config ( ${CONFIG} )"
-                "${QUIET:-_print_center}" "normal" " Invalid Client Secret ${message} " "-" && unset CLIENT_SECRET client_secret
-            fi
-        }
-        [[ -z ${client_secret} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter Client Secret " "-"
-        [[ -n ${client_secret} ]] && _clear_line 1
-        printf -- "-> "
-        read -r CLIENT_SECRET && client_secret=1
-    done
-
-    [[ -n ${REFRESH_TOKEN} ]] && {
-        ! [[ ${REFRESH_TOKEN} =~ ${REFRESH_TOKEN_REGEX} ]] &&
-            "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token in config file, follow below steps.. " "-" && unset REFRESH_TOKEN
-    }
-
-    [[ -z ${REFRESH_TOKEN} ]] && {
-        printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
-        printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
-        read -r REFRESH_TOKEN
-        if [[ -n ${REFRESH_TOKEN} ]]; then
-            "${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
-            if [[ ${REFRESH_TOKEN} =~ ${REFRESH_TOKEN_REGEX} ]]; then
-                { _get_access_token_and_update && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || check_error=true
-            else
-                check_error=true
-            fi
-            [[ -n ${check_error} ]] && "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-" && unset REFRESH_TOKEN
-        else
-            "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"
-        fi
 
         [[ -z ${REFRESH_TOKEN} ]] && {
-            printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
-            URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
-            printf "\n%s\n" "${URL}"
-            until [[ -n ${AUTHORIZATION_CODE} && -n ${AUTHORIZATION_CODE_VALID} ]]; do
-                [[ -n ${AUTHORIZATION_CODE} ]] && {
-                    if [[ ${AUTHORIZATION_CODE} =~ ${AUTHORIZATION_CODE_REGEX} ]]; then
-                        AUTHORIZATION_CODE_VALID="true" && continue
-                    else
-                        "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
-                    fi
-                }
-                { [[ -z ${authorization_code} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
-                printf -- "-> "
-                read -r AUTHORIZATION_CODE && authorization_code=1
-            done
-            RESPONSE="$(curl --compressed "${CURL_PROGRESS}" -X POST \
-                --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
-            _clear_line 1 1>&2
+            printf "\n" && "${QUIET:-_print_center}" "normal" "If you have a refresh token generated, then type the token, else leave blank and press return key.." " "
+            printf "\n" && "${QUIET:-_print_center}" "normal" " Refresh Token " "-" && printf -- "-> "
+            read -r REFRESH_TOKEN
+            if [[ -n ${REFRESH_TOKEN} ]]; then
+                "${QUIET:-_print_center}" "normal" " Checking refresh token.. " "-"
+                if [[ ${REFRESH_TOKEN} =~ ${REFRESH_TOKEN_REGEX} ]]; then
+                    { _get_access_token_and_update normal && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || check_error=true
+                else
+                    check_error=true
+                fi
+                [[ -n ${check_error} ]] && "${QUIET:-_print_center}" "normal" " Error: Invalid Refresh token given, follow below steps to generate.. " "-" && unset REFRESH_TOKEN
+            else
+                "${QUIET:-_print_center}" "normal" " No Refresh token given, follow below steps to generate.. " "-"
+            fi
 
-            REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}" || :)"
-            { _get_access_token_and_update "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
+            [[ -z ${REFRESH_TOKEN} ]] && {
+                printf "\n" && "${QUIET:-_print_center}" "normal" "Visit the below URL, tap on allow and then enter the code obtained" " "
+                URL="https://accounts.google.com/o/oauth2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=${SCOPE}&response_type=code&prompt=consent"
+                printf "\n%s\n" "${URL}"
+                until [[ -n ${AUTHORIZATION_CODE} && -n ${AUTHORIZATION_CODE_VALID} ]]; do
+                    [[ -n ${AUTHORIZATION_CODE} ]] && {
+                        if [[ ${AUTHORIZATION_CODE} =~ ${AUTHORIZATION_CODE_REGEX} ]]; then
+                            AUTHORIZATION_CODE_VALID="true" && continue
+                        else
+                            "${QUIET:-_print_center}" "normal" " Invalid CODE given, try again.. " "-" && unset AUTHORIZATION_CODE authorization_code
+                        fi
+                    }
+                    { [[ -z ${authorization_code} ]] && printf "\n" && "${QUIET:-_print_center}" "normal" " Enter the authorization code " "-"; } || _clear_line 1
+                    printf -- "-> "
+                    read -r AUTHORIZATION_CODE && authorization_code=1
+                done
+                RESPONSE="$(curl --compressed "${CURL_PROGRESS}" -X POST \
+                    --data "code=${AUTHORIZATION_CODE}&client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&redirect_uri=${REDIRECT_URI}&grant_type=authorization_code" "${TOKEN_URL}")" || :
+                _clear_line 1 1>&2
+
+                REFRESH_TOKEN="$(_json_value refresh_token 1 1 <<< "${RESPONSE}" || :)"
+                { _get_access_token_and_update normal "${RESPONSE}" && _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"; } || return 1
+            }
+            printf "\n"
         }
-        printf "\n"
-    }
+        [[ -z ${ACCESS_TOKEN} || ${ACCESS_TOKEN_EXPIRY:-0} -lt "$(printf "%(%s)T\\n" "-1")" ]] || ! [[ ${ACCESS_TOKEN} =~ ${ACCESS_TOKEN_REGEX} ]] &&
+            { _get_access_token_and_update normal || return 1; }
+        printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
+    else
+        command -v openssl 2>| /dev/null 1>&2 ||
+            { "${QUIET:-_print_center}" 'normal' "Error: openssl not installed, install openssl to use '-sa | --service-account' flag." "=" 1>&2 && return 1; }
 
-    [[ -z ${ACCESS_TOKEN} || ${ACCESS_TOKEN_EXPIRY:-0} -lt "$(printf "%(%s)T\\n" "-1")" ]] || ! [[ ${ACCESS_TOKEN} =~ ${ACCESS_TOKEN_REGEX} ]] &&
-        { _get_access_token_and_update || return 1; }
-    printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
+        SERVICE_ACCOUNT="SA_$(_json_value private_key_id 1 1 < "${SERVICE_ACCOUNT_FILE}")_SA" ||
+            { "${QUIET:-_print_center}" 'normal' "Error: Invalid service account file." "=" 1>&2 && return 1; }
+
+        SA_ACCESS_TOKEN_NAME="${SERVICE_ACCOUNT}_ACCESS_TOKEN" \
+            SA_ACCESS_TOKEN_EXPIRY_NAME="${SA_ACCESS_TOKEN_NAME}_EXPIRY"
+
+        SERVICE_ACCOUNT_ACCESS_TOKEN="${!SA_ACCESS_TOKEN_NAME}"
+        SERVICE_ACCOUNT_ACCESS_TOKEN_EXPIRY="${!SA_ACCESS_TOKEN_EXPIRY_NAME}"
+
+        [[ -z ${SERVICE_ACCOUNT_ACCESS_TOKEN} || ${SERVICE_ACCOUNT_ACCESS_TOKEN_EXPIRY:-0} -lt "$(printf "%(%s)T\\n" "-1")" ]] || ! [[ ${SERVICE_ACCOUNT_ACCESS_TOKEN} =~ ${ACCESS_TOKEN_REGEX} ]] && {
+            ASSERTION_DATA="$(_generate_jwt "${SERVICE_ACCOUNT_FILE}" "${SCOPE}")" || { printf "%s\n" "${ASSERTION_DATA}" 1>&2 && return 1; }
+            _get_access_token_and_update sa "${ASSERTION_DATA}" || return 1
+        }
+
+        printf "%s\n%s\n" "ACCESS_TOKEN=\"${!SA_ACCESS_TOKEN_NAME}\"" \
+            "ACCESS_TOKEN_EXPIRY=\"${!SA_ACCESS_TOKEN_EXPIRY_NAME}\"" >| "${TMPFILE}_ACCESS_TOKEN"
+    fi
 
     # launch a background service to check access token and update it
     # checks ACCESS_TOKEN_EXPIRY, try to update before 5 mins of expiry, a fresh token gets 60 mins
     # process will be killed when script exits or "${MAIN_PID}" is killed
     {
         until ! kill -0 "${MAIN_PID}" 2>| /dev/null 1>&2; do
+            unset ASSERTION_DATA MODE
             . "${TMPFILE}_ACCESS_TOKEN"
             CURRENT_TIME="$(printf "%(%s)T\\n" "-1")"
             REMAINING_TOKEN_TIME="$((ACCESS_TOKEN_EXPIRY - CURRENT_TIME))"
             if [[ ${REMAINING_TOKEN_TIME} -le 300 ]]; then
+                [[ -n ${SERVICE_ACCOUNT_FILE} ]] && {
+                    ASSERTION_DATA="$(_generate_jwt "${SERVICE_ACCOUNT_FILE}" "${SCOPE}")" || :
+                    MODE="sa"
+                }
                 # timeout after 30 seconds, it shouldn't take too long anyway, and update tmp config
-                CONFIG="${TMPFILE}_ACCESS_TOKEN" _timeout 30 _get_access_token_and_update || :
+                SERVICE_ACCOUNT="" CONFIG="${TMPFILE}_ACCESS_TOKEN" _timeout 30 _get_access_token_and_update "${MODE:-normal}" "${ASSERTION_DATA:-}" || :
             else
                 TOKEN_PROCESS_TIME_TO_SLEEP="$(if [[ ${REMAINING_TOKEN_TIME} -le 301 ]]; then
                     printf "0\n"
@@ -411,7 +445,7 @@ _check_credentials() {
             fi
             sleep 1
         done
-    } &
+    } 2>| /dev/null 1>&2 &
     ACCESS_TOKEN_SERVICE_PID="${!}"
 
     return 0
@@ -510,7 +544,7 @@ _process_arguments() {
 
     export -f _bytes_to_human _dirname _json_value _url_encode _support_ansi_escapes _newline _print_center_quiet _print_center _clear_line \
         _api_request _get_access_token_and_update _check_existing_file _upload_file _upload_file_main _clone_file _collect_file_info _generate_upload_link _upload_file_from_uri _full_upload \
-        _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _get_rootdir_id
+        _normal_logging_upload _error_logging_upload _log_upload_session _remove_upload_session _upload_folder _share_id _get_rootdir_id _generate_jwt
 
     # on successful uploads
     _share_and_print_link() {
@@ -684,8 +718,8 @@ main() {
                 # update the config with latest ACCESS_TOKEN and ACCESS_TOKEN_EXPIRY only if changed
                 . "${TMPFILE}_ACCESS_TOKEN"
                 [[ ${INITIAL_ACCESS_TOKEN} = "${ACCESS_TOKEN}" ]] || {
-                    _update_config ACCESS_TOKEN "${ACCESS_TOKEN}" "${CONFIG}"
-                    _update_config ACCESS_TOKEN_EXPIRY "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+                    _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN" "${ACCESS_TOKEN}" "${CONFIG}"
+                    _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
                 }
             } 1>| /dev/null
 

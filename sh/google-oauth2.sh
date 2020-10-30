@@ -113,7 +113,7 @@ if [ "${1}" = create ]; then
     _clear_line 1 1>&2
 
     REFRESH_TOKEN="$(printf "%s\n" "${RESPONSE}" | _json_value refresh_token 1 1 || :)"
-    if _get_access_token_and_update "${RESPONSE}"; then
+    if _get_access_token_and_update normal "${RESPONSE}"; then
         _update_config REFRESH_TOKEN "${REFRESH_TOKEN}" "${CONFIG}"
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
         printf "Refresh Token: %s\n" "${REFRESH_TOKEN}"
@@ -123,7 +123,7 @@ if [ "${1}" = create ]; then
 elif [ "${1}" = refresh ]; then
     if [ -n "${REFRESH_TOKEN}" ]; then
         "${QUIET:-_print_center}" "justify" "Required credentials set." "="
-        { _get_access_token_and_update && _clear_line 1; } || return 1
+        { _get_access_token_and_update normal && _clear_line 1; } || return 1
         printf "Access Token: %s\n" "${ACCESS_TOKEN}"
     else
         "${QUIET:-_print_center}" "normal" "Refresh Token not set" ", use ${0##*/} create to generate one." "="
