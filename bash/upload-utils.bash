@@ -91,12 +91,14 @@ _upload_file_main() {
     retry="${RETRY:-0}" && unset RETURN_STATUS
     until [[ ${retry} -le 0 ]] && [[ -n ${RETURN_STATUS} ]]; do
         if [[ -n ${4} ]]; then
-            _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" 2>| /dev/null 1>&2 && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         else
-            _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" && RETURN_STATUS=1 && break
+            { _upload_file "${UPLOAD_MODE:-create}" "${file}" "${dirid}" && RETURN_STATUS=1 && break; } || RETURN_STATUS=2
         fi
-        sleep "$((_sleep += 1))" # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
-        RETURN_STATUS=2 retry="$((retry - 1))" && continue
+        # decrease retry using -=, skip sleep if all retries done
+        [[ $((retry -= 1)) -gt 1 ]] && sleep "$((_sleep += 1))"
+        # on every retry, sleep the times of retry it is, e.g for 1st, sleep 1, for 2nd, sleep 2
+        continue
     done
     { [[ ${RETURN_STATUS} = 1 ]] && printf "%b" "${4:+${RETURN_STATUS}\n}"; } || printf "%b" "${4:+${RETURN_STATUS}\n}" 1>&2
     return 0
