@@ -310,7 +310,7 @@ _update_config() {
     chmod u+w "${config_path_update_config}"
     printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name_update_config}=" "${config_path_update_config}" || :)" \
         "${value_name_update_config}=\"${value_update_config}\"" >| "${config_path_update_config}"
-    chmod u-w+r "${config_path_update_config}"
+    chmod a-w-r-x,u+r "${config_path_update_config}"
 }
 
 ###################################################
