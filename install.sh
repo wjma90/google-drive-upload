@@ -360,13 +360,13 @@ _variables() {
     else
         date +'%s'
     fi)" && export LAST_UPDATE_TIME
-    GLOBAL_INSTALL="false"
+    GLOBAL_INSTALL="false" PERM_MODE="u"
     export GUPLOAD_INSTALLED_WITH="script"
 
     [ -n "${SKIP_SYNC}" ] && SYNC_COMMAND_NAME=""
-    export VALUES_LIST="REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL GUPLOAD_INSTALLED_WITH"
+    export VALUES_LIST="REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL PERM_MODE GUPLOAD_INSTALLED_WITH"
 
-    VALUES_REGEX="" && for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL GUPLOAD_INSTALLED_WITH; do
+    VALUES_REGEX="" && for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL PERM_MODE GUPLOAD_INSTALLED_WITH; do
         VALUES_REGEX="${VALUES_REGEX:+${VALUES_REGEX}|}^${i}=\".*\".* # added values"
     done
 
@@ -439,7 +439,7 @@ _update_value() {
         printf "%s\n" "${value_name}=\"${value}\" # added values"
         printf "%s\n" "${script_without_value_and_shebang}"
     )"
-    chmod +w "${command_path}" && printf "%s\n" "${new_script}" >| "${command_path}" && chmod -w "${command_path}"
+    chmod u+w "${command_path}" && printf "%s\n" "${new_script}" >| "${command_path}" && chmod "a-w-r-x,${PERM_MODE:-u}+r+x" "${command_path}"
     return 0
 }
 EOF
@@ -469,7 +469,7 @@ _download_files() {
                 ;;
         esac
 
-        _print_center "justify" "${local_file}" "-" && [ -f "${local_file}" ] && chmod +w "${local_file}"
+        _print_center "justify" "${local_file}" "-" && [ -f "${local_file}" ] && chmod u+w "${local_file}"
         # shellcheck disable=SC2086
         ! curl -s --compressed "https://raw.githubusercontent.com/${REPO}/${sha}/${file}" -o "${local_file}" && return 1
         _clear_line 1
@@ -487,10 +487,10 @@ EOF
 _inject_values() {
     shebang="$(sed -n 1p "${INSTALL_PATH}/${COMMAND_NAME}")"
     script_without_values_and_shebang="$(grep -vE "${VALUES_REGEX}|^LATEST_INSTALLED_SHA=\".*\".* # added values" "${INSTALL_PATH}/${COMMAND_NAME}" | sed 1d)"
-    chmod +w "${INSTALL_PATH}/${COMMAND_NAME}"
+    chmod u+w "${INSTALL_PATH}/${COMMAND_NAME}"
     {
         printf "%s\n" "${shebang}"
-        for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL GUPLOAD_INSTALLED_WITH; do
+        for i in VALUES_LIST REPO COMMAND_NAME ${SYNC_COMMAND_NAME:+SYNC_COMMAND_NAME} INSTALL_PATH TYPE TYPE_VALUE SHELL_RC LAST_UPDATE_TIME AUTO_UPDATE_INTERVAL INSTALLATION GUPLOAD_SCRIPT_SHA GSYNC_SCRIPT_SHA GLOBAL_INSTALL PERM_MODE GUPLOAD_INSTALLED_WITH; do
             printf "%s\n" "${i}=\"$(eval printf "%s" \"\$"${i}"\")\" # added values"
         done
         printf "%s\n" "LATEST_INSTALLED_SHA=\"${LATEST_CURRENT_SHA}\" # added values"
@@ -500,7 +500,7 @@ _inject_values() {
 
     [ -n "${SKIP_SYNC}" ] && return 0
     sync_script="$(sed "s|gupload|${COMMAND_NAME}|g" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}")"
-    chmod +w "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+    chmod u+w "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
     printf "%s\n" "${sync_script}" >| "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
 }
 
@@ -534,9 +534,9 @@ _start() {
     if _download_files; then
         _inject_values || { "${QUIET:-_print_center}" "normal" "Cannot edit installed files" ", check if create a issue on github with proper log." "=" && exit 1; }
 
-        chmod "${GLOBAL_PERMS:-u+x+r-w}" "${INSTALL_PATH}/${COMMAND_NAME}"
-        [ -z "${SKIP_SYNC}" ] && chmod "${GLOBAL_PERMS:-u+x+r-w}" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
-        chmod -f +w "${CONFIG_INFO}" && printf "%s\n" "CONFIG=\"${CONFIG}\"" >| "${CONFIG_INFO}" && chmod "${GLOBAL_PERMS:-u+x+r-w}" "${CONFIG_INFO}"
+        chmod "a-w-r-x,${PERM_MODE:-u}+x+r" "${INSTALL_PATH}/${COMMAND_NAME}"
+        [ -z "${SKIP_SYNC}" ] && chmod "a-w-r-x,${PERM_MODE:-u}+x+r" "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+        chmod -f +w "${CONFIG_INFO}" && printf "%s\n" "CONFIG=\"${CONFIG}\"" >| "${CONFIG_INFO}" && chmod "a-w-r-x,u+r" "${CONFIG_INFO}"
 
         [ "${GLOBAL_INSTALL}" = false ] && {
             _PATH="PATH=\"${INSTALL_PATH}:\${PATH}\""
@@ -612,7 +612,7 @@ _uninstall() {
     # Kill all sync jobs and remove sync folder
     [ -z "${SKIP_SYNC}" ] && command -v "${SYNC_COMMAND_NAME}" 2>| /dev/null 1>&2 && {
         "${SYNC_COMMAND_NAME}" -k all 2>| /dev/null 1>&2 || :
-        chmod -f u+w "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
+        chmod -f +w "${INSTALL_PATH}/${SYNC_COMMAND_NAME}"
         rm -rf "${INFO_PATH:?}"/sync "${INSTALL_PATH:?}/${SYNC_COMMAND_NAME:?}"
     }
 
@@ -742,7 +742,7 @@ _setup_arguments() {
     { printf "%s\n" "${PATH}" | grep -q -e "${INSTALL_PATH}:" -e "${INSTALL_PATH}/:" && IN_PATH="true"; } || :
 
     # check if install path outside home dir and running as root
-    [ -n "${INSTALL_PATH##${HOME}*}" ] && GLOBAL_PERMS="a+r+x-w" && GLOBAL_INSTALL="true" && ! [ "$(id -u)" = 0 ] &&
+    [ -n "${INSTALL_PATH##${HOME}*}" ] && PERM_MODE="a" && GLOBAL_INSTALL="true" && ! [ "$(id -u)" = 0 ] &&
         printf "%s\n" "Error: Need root access to run the script for given install path ( ${INSTALL_PATH} )." && exit 1
 
     # global dir must be in executable path

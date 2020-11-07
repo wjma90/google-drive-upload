@@ -325,7 +325,7 @@ _update_config() {
     chmod u+w "${config_path}"
     printf "%s\n%s\n" "$(grep -v -e "^$" -e "^${value_name}=" "${config_path}" || :)" \
         "${value_name}=\"${value}\"" >| "${config_path}"
-    chmod u-w+r "${config_path}"
+    chmod a-w-r-x,u+r "${config_path}"
 }
 
 ###################################################
