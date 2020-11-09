@@ -26,7 +26,7 @@ Usage:
 }
 
 UTILS_FOLDER="${UTILS_FOLDER:-$(pwd)}"
-{ . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/drive-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
+{ . "${UTILS_FOLDER}"/common-utils.bash && . "${UTILS_FOLDER}"/auth-utils.bash; } || { printf "Error: Unable to source util files.\n" && exit 1; }
 
 [[ ${1} = create ]] || [[ ${1} = refresh ]] || _short_help
 
