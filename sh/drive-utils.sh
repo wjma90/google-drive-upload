@@ -207,6 +207,8 @@ _get_access_token_and_update() {
         ACCESS_TOKEN_EXPIRY="$(($(date +"%s") + $(printf "%s\n" "${RESPONSE}" | _json_value expires_in 1 1) - 1))"
         _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN" "${ACCESS_TOKEN}" "${CONFIG}"
         _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+        _update_config "ACCESS_TOKEN" "${ACCESS_TOKEN}" "${TMPFILE}_ACCESS_TOKEN"
+        _update_config "ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${TMPFILE}_ACCESS_TOKEN"
     else
         "${QUIET:-_print_center}" "justify" "Error: Something went wrong" ", printing error." "=" 1>&2
         printf "%s\n" "${RESPONSE}" 1>&2

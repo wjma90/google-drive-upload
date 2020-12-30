@@ -309,18 +309,19 @@ _setup_arguments() {
 # Result: read description
 ###################################################
 _check_credentials() {
-    # Config file is created automatically after first run
-    [ -r "${CONFIG}" ] && . "${CONFIG}"
-    "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
-
-    ! [ -t 1 ] && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
-        printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
-        printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
-    }
 
     ACCESS_TOKEN_REGEX='ya29\.[0-9A-Za-z_-]+' # 2048 bytes
 
     if [ -z "${SERVICE_ACCOUNT_FILE}" ]; then
+        # Config file is created automatically after first run
+        [ -r "${CONFIG}" ] && . "${CONFIG}"
+        "${UPDATE_DEFAULT_CONFIG:-:}" CONFIG "${CONFIG}" "${CONFIG_INFO}"
+
+        ! [ -t 1 ] && [ -z "${CLIENT_ID:+${CLIENT_SECRET:+${REFRESH_TOKEN}}}" ] && {
+            printf "%s\n" "Error: Script is not running in a terminal, cannot ask for credentials."
+            printf "%s\n" "Add in config manually if terminal is not accessible. CLIENT_ID, CLIENT_SECRET and REFRESH_TOKEN is required." && return 1
+        }
+
         # Following https://developers.google.com/identity/protocols/oauth2#size
         CLIENT_ID_REGEX='[0-9]+-[0-9A-Za-z_]{32}\.apps\.googleusercontent\.com'
         CLIENT_SECRET_REGEX='[0-9A-Za-z_-]+'
@@ -410,6 +411,7 @@ _check_credentials() {
             { _get_access_token_and_update normal || return 1; }
         printf "%b\n" "ACCESS_TOKEN=\"${ACCESS_TOKEN}\"\nACCESS_TOKEN_EXPIRY=\"${ACCESS_TOKEN_EXPIRY}\"" >| "${TMPFILE}_ACCESS_TOKEN"
     else
+        _print_center "justify" "Using service account file." "="
         command -v openssl 2>| /dev/null 1>&2 ||
             { "${QUIET:-_print_center}" 'normal' "Error: openssl not installed, install openssl to use '-sa | --service-account' flag." "=" 1>&2 && return 1; }
 
@@ -423,9 +425,6 @@ _check_credentials() {
             ASSERTION_DATA="$(_generate_jwt "${SERVICE_ACCOUNT_FILE}" "${SCOPE}")" || { printf "%s\n" "${ASSERTION_DATA}" 1>&2 && return 1; }
             _get_access_token_and_update sa "${ASSERTION_DATA}" || return 1
         }
-
-        printf "%s\n%s\n" "ACCESS_TOKEN=\"$(eval printf "%s" \"\$"${SERVICE_ACCOUNT}_ACCESS_TOKEN"\")"\" \
-            "ACCESS_TOKEN_EXPIRY=\"$(eval printf "%s" \"\$"${SERVICE_ACCOUNT}_ACCESS_TOKEN_EXPIRY"\")"\" >| "${TMPFILE}_ACCESS_TOKEN"
     fi
 
     # launch a background service to check access token and update it
@@ -744,6 +743,8 @@ main() {
                 [ "${INITIAL_ACCESS_TOKEN}" = "${ACCESS_TOKEN}" ] || {
                     _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN" "${ACCESS_TOKEN}" "${CONFIG}"
                     _update_config "${SERVICE_ACCOUNT:+${SERVICE_ACCOUNT}_}ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${CONFIG}"
+                    _update_config "ACCESS_TOKEN" "${ACCESS_TOKEN}" "${TMPFILE}_ACCESS_TOKEN"
+                    _update_config "ACCESS_TOKEN_EXPIRY" "${ACCESS_TOKEN_EXPIRY}" "${TMPFILE}_ACCESS_TOKEN"
                 }
             } 1>| /dev/null
 
